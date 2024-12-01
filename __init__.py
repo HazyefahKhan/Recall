@@ -4,34 +4,46 @@ from aqt.qt import *
 from anki.models import ModelManager
 from anki.notes import Note
 
-def init_mcq_note_type():
-    # Check if our note type already exists
-    model_name = "MCQ Card"
+def create_mcq_note_type(num_options, model_name):
+    """Create an MCQ note type with the specified number of options."""
     if model_name not in mw.col.models.all_names():
-        # Create the note type
         mm = mw.col.models
         m = mm.new(model_name)
         
-        # Add fields
-        for field_name in [
-            "Question",
-            "OptionA",
-            "ExplanationA",
-            "OptionB",
-            "ExplanationB",
-            "OptionC",
-            "ExplanationC",
-            "OptionD",
-            "ExplanationD",
-            "CorrectOptions"
-        ]:
-            field = mm.new_field(field_name)
-            mm.add_field(m, field)
+        # Add Question field
+        mm.add_field(m, mm.new_field("Question"))
+        
+        # Add option and explanation fields
+        letters = [chr(65 + i) for i in range(num_options)]  # A, B, C, etc.
+        for letter in letters:
+            mm.add_field(m, mm.new_field(f"Option{letter}"))
+            mm.add_field(m, mm.new_field(f"Explanation{letter}"))
+        
+        # Add CorrectOptions field
+        mm.add_field(m, mm.new_field("CorrectOptions"))
 
-        # Add templates
-        template = mm.new_template("MCQ Card")
-        template['qfmt'] = """
-        <div class="question">{{Question}}</div>
+        # Create front template with dynamic options
+        options_html = ""
+        for letter in letters:
+            options_html += f"""
+                <div class="option" onclick="toggleOption('{letter}')" id="option{letter}" data-original="{letter}">
+                    <input type="checkbox" id="check{letter}" class="option-check">
+                    <label>{{{{Option{letter}}}}}</label>
+                </div>"""
+
+        # Create explanations HTML for the back template
+        explanations_html = ""
+        for letter in letters:
+            explanations_html += f"""
+                <div id="option{letter}Explanation" class="option-explanation">
+                    <div class="option-header">{{{{Option{letter}}}}}</div>
+                    <div class="explanation">{{{{Explanation{letter}}}}}</div>
+                </div>"""
+
+        # Create template
+        template = mm.new_template(model_name)
+        template['qfmt'] = f"""
+        <div class="question">{{{{Question}}}}</div>
         <div id="options" class="options"></div>
         <button onclick="submitAnswer()" id="submit-btn" class="submit-button">Submit</button>
 
@@ -39,81 +51,78 @@ def init_mcq_note_type():
             // Store selected options and original option mapping
             var selectedOptions = new Set();
             var submitted = false;
-            var originalToShuffled = {};
-            var shuffledToOriginal = {};
+            var originalToShuffled = {{}};
+            var shuffledToOriginal = {{}};
 
             // Fisher-Yates shuffle algorithm
-            function shuffleArray(array) {
-                for (let i = array.length - 1; i > 0; i--) {
+            function shuffleArray(array) {{
+                for (let i = array.length - 1; i > 0; i--) {{
                     const j = Math.floor(Math.random() * (i + 1));
                     [array[i], array[j]] = [array[j], array[i]];
-                }
+                }}
                 return array;
-            }
+            }}
 
             // Create option element
-            function createOption(letter, content) {
+            function createOption(letter, content) {{
                 return `
-                    <div class="option" onclick="toggleOption('${letter}')" id="option${letter}" data-original="${letter}">
-                        <input type="checkbox" id="check${letter}" class="option-check">
-                        <label>${content}</label>
+                    <div class="option" onclick="toggleOption('${{letter}}')" id="option${{letter}}" data-original="${{letter}}">
+                        <input type="checkbox" id="check${{letter}}" class="option-check">
+                        <label>${{content}}</label>
                     </div>
                 `;
-            }
+            }}
 
             // Initialize options in random order
-            function initializeOptions() {
+            function initializeOptions() {{
                 const options = [
-                    { letter: 'A', content: `{{OptionA}}` },
-                    { letter: 'B', content: `{{OptionB}}` },
-                    { letter: 'C', content: `{{OptionC}}` },
-                    { letter: 'D', content: `{{OptionD}}` }
+                    {', '.join([f"{{ letter: '{letter}', content: `{{{{Option{letter}}}}}` }}" for letter in letters])}
                 ];
 
                 // Create shuffled indices
-                const shuffledIndices = shuffleArray([0, 1, 2, 3]);
-                const letters = ['A', 'B', 'C', 'D'];
+                const shuffledIndices = shuffleArray([{', '.join(map(str, range(num_options)))}]);
+                const letters = [{', '.join([f"'{letter}'" for letter in letters])}];
                 
                 // Create mappings
-                shuffledIndices.forEach((originalIndex, newIndex) => {
+                shuffledIndices.forEach((originalIndex, newIndex) => {{
                     originalToShuffled[letters[originalIndex]] = letters[newIndex];
                     shuffledToOriginal[letters[newIndex]] = letters[originalIndex];
-                });
+                }});
 
                 // Create options HTML
                 const optionsContainer = document.getElementById('options');
-                shuffledIndices.forEach((originalIndex, newIndex) => {
+                shuffledIndices.forEach((originalIndex, newIndex) => {{
                     const option = options[originalIndex];
                     optionsContainer.innerHTML += createOption(letters[newIndex], option.content);
-                });
+                }});
 
                 // Store mappings for the answer side
-                document.body.setAttribute('data-option-mapping', JSON.stringify({
+                document.body.setAttribute('data-option-mapping', JSON.stringify({{
                     originalToShuffled,
                     shuffledToOriginal
-                }));
-            }
+                }}));
+            }}
 
             // Toggle option selection
-            function toggleOption(letter) {
+            function toggleOption(letter) {{
                 if (submitted) return;  // Prevent changes after submission
                 
                 var checkbox = document.getElementById('check' + letter);
                 var optionDiv = document.getElementById('option' + letter);
                 
-                if (selectedOptions.has(letter)) {
+                if (selectedOptions.has(letter)) {{
                     selectedOptions.delete(letter);
                     checkbox.checked = false;
                     optionDiv.classList.remove('selected');
-                } else {
+                }} else {{
                     selectedOptions.add(letter);
                     checkbox.checked = true;
                     optionDiv.classList.add('selected');
-                }
-            }
+                }}
+            }}
 
             // Submit answer
-            function submitAnswer() {
+            function submitAnswer() {{
                 if (submitted) return;
                 submitted = true;
                 
@@ -126,99 +135,84 @@ def init_mcq_note_type():
                 
                 // Show answer
                 pycmd('ans');
-            }
+            }}
 
             // Only initialize if this is a new card (not the answer side)
-            if (!document.getElementById('answer')) {
-                if (document.readyState === 'loading') {
+            if (!document.getElementById('answer')) {{
+                if (document.readyState === 'loading') {{
                     document.addEventListener('DOMContentLoaded', initializeOptions);
-                } else {
+                }} else {{
                     initializeOptions();
-                }
-            } else {
+                }}
+            }} else {{
                 // Hide submit button if this is the answer side
                 var submitBtn = document.getElementById('submit-btn');
-                if (submitBtn) {
+                if (submitBtn) {{
                     submitBtn.style.display = 'none';
-                }
-            }
+                }}
+            }}
         </script>
         """
-        template['afmt'] = """
-        {{FrontSide}}
+
+        template['afmt'] = f"""
+        {{{{FrontSide}}}}
         <hr id="answer">
         <div class="answer">
             <div class="options-explanations">
-                <div id="optionAExplanation" class="option-explanation">
-                    <div class="option-header">{{OptionA}}</div>
-                    <div class="explanation">{{ExplanationA}}</div>
-                </div>
-                
-                <div id="optionBExplanation" class="option-explanation">
-                    <div class="option-header">{{OptionB}}</div>
-                    <div class="explanation">{{ExplanationB}}</div>
-                </div>
-                
-                <div id="optionCExplanation" class="option-explanation">
-                    <div class="option-header">{{OptionC}}</div>
-                    <div class="explanation">{{ExplanationC}}</div>
-                </div>
-                
-                <div id="optionDExplanation" class="option-explanation">
-                    <div class="option-header">{{OptionD}}</div>
-                    <div class="explanation">{{ExplanationD}}</div>
-                </div>
+                {explanations_html}
             </div>
         </div>
         <script>
             // Hide submit button on answer side
             var submitBtn = document.getElementById('submit-btn');
-            if (submitBtn) {
+            if (submitBtn) {{
                 submitBtn.style.display = 'none';
-            }
+            }}
 
             // Function to check if an option is correct
-            function isCorrectAnswer(option) {
-                var correctAnswers = '{{CorrectOptions}}'.split(',').map(s => s.trim());
+            function isCorrectAnswer(option) {{
+                var correctAnswers = '{{{{CorrectOptions}}}}'.split(',').map(s => s.trim());
                 return correctAnswers.includes(option);
-            }
+            }}
 
             // Apply colors and show selections
-            function applyColorsAndSelections() {
+            function applyColorsAndSelections() {{
                 // Get the original selected options
                 var selectedOptions = (document.body.getAttribute('data-selected-options') || '').split(',');
                 
-                ['A', 'B', 'C', 'D'].forEach(function(option) {
+                [{', '.join([f"'{letter}'" for letter in letters])}].forEach(function(option) {{
                     var explanationDiv = document.getElementById('option' + option + 'Explanation');
                     var headerDiv = explanationDiv.querySelector('.option-header');
                     
-                    if (explanationDiv) {
+                    if (explanationDiv) {{
                         // Apply correct/incorrect colors
-                        if (isCorrectAnswer(option)) {
+                        if (isCorrectAnswer(option)) {{
                             explanationDiv.classList.add('correct-answer');
-                        } else {
+                        }} else {{
                             explanationDiv.classList.add('incorrect-answer');
-                        }
+                        }}
                         
                         // Show selection by adding blue background to header
-                        if (selectedOptions.includes(option)) {
+                        if (selectedOptions.includes(option)) {{
                             headerDiv.classList.add('was-selected');
-                        }
-                    }
-                });
-            }
+                        }}
+                    }}
+                }});
+            }}
 
             // Call when DOM is loaded
-            if (document.readyState === 'loading') {
+            if (document.readyState === 'loading') {{
                 document.addEventListener('DOMContentLoaded', applyColorsAndSelections);
-            } else {
+            }} else {{
                 applyColorsAndSelections();
-            }
+            }}
         </script>
         """
+
+        # Add template to model before adding CSS
         mm.add_template(m, template)
 
-        # CSS remains unchanged
+        # Add CSS (unchanged)
         m['css'] = """
         .card {
             font-family: arial;
@@ -331,12 +325,17 @@ def init_mcq_note_type():
         }
         """
         
+        # Add the model to the collection
         mm.add(m)
         return m
 
-# Initialize the plugin
 def init():
-    init_mcq_note_type()
+    # Create all MCQ variants
+    create_mcq_note_type(2, "MCQ--")  # 2 options
+    create_mcq_note_type(3, "MCQ-")   # 3 options
+    create_mcq_note_type(4, "MCQ")    # 4 options (default)
+    create_mcq_note_type(5, "MCQ+")   # 5 options
+    create_mcq_note_type(6, "MCQ++")  # 6 options
 
 # Add the init hook
 gui_hooks.profile_did_open.append(init) 
