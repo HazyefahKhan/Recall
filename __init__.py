@@ -79,6 +79,9 @@ def init_mcq_note_type():
                 if (submitted) return;
                 submitted = true;
                 
+                // Store selected options in a data attribute for the answer side
+                document.body.setAttribute('data-selected-options', Array.from(selectedOptions).join(','));
+                
                 // Disable further selections
                 document.getElementById('submit-btn').disabled = true;
                 
@@ -120,17 +123,25 @@ def init_mcq_note_type():
                 return correctAnswers.includes(option);
             }
 
-            // Apply colors to options
-            function applyColors() {
+            // Apply colors and show selections
+            function applyColorsAndSelections() {
+                var selectedOptions = (document.body.getAttribute('data-selected-options') || '').split(',');
+                
                 ['A', 'B', 'C', 'D'].forEach(function(option) {
                     var explanationDiv = document.getElementById('option' + option + 'Explanation');
+                    var headerDiv = explanationDiv.querySelector('.option-header');
+                    
                     if (explanationDiv) {
+                        // Apply correct/incorrect colors
                         if (isCorrectAnswer(option)) {
                             explanationDiv.classList.add('correct-answer');
-                            console.log('Adding correct-answer to option ' + option);
                         } else {
                             explanationDiv.classList.add('incorrect-answer');
-                            console.log('Adding incorrect-answer to option ' + option);
+                        }
+                        
+                        // Show selection by adding blue background to header
+                        if (selectedOptions.includes(option)) {
+                            headerDiv.classList.add('was-selected');
                         }
                     }
                 });
@@ -138,9 +149,9 @@ def init_mcq_note_type():
 
             // Call when DOM is loaded
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', applyColors);
+                document.addEventListener('DOMContentLoaded', applyColorsAndSelections);
             } else {
-                applyColors();
+                applyColorsAndSelections();
             }
         </script>
         """
@@ -237,6 +248,10 @@ def init_mcq_note_type():
             padding: 10px;
             border-radius: 5px;
             background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .option-header.was-selected {
+            background-color: #1a237e !important;
         }
 
         .explanation {
