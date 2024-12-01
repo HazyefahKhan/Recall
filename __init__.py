@@ -7,21 +7,25 @@ from anki.notes import Note
 def init_mcq_note_type():
     # Check if our note type already exists
     model_name = "MCQ Card"
-    if model_name not in mw.col.models.names():
+    if model_name not in mw.col.models.all_names():
         # Create the note type
         mm = mw.col.models
         m = mm.new(model_name)
         
         # Add fields
-        mm.add_field(m, mm.new_field("Question"))
-        mm.add_field(m, mm.new_field("OptionA"))
-        mm.add_field(m, mm.new_field("OptionB"))
-        mm.add_field(m, mm.new_field("OptionC"))
-        mm.add_field(m, mm.new_field("OptionD"))
-        mm.add_field(m, mm.new_field("CorrectOptions"))
-        mm.add_field(m, mm.new_field("CorrectExplanations"))
-        mm.add_field(m, mm.new_field("IncorrectOptions"))
-        mm.add_field(m, mm.new_field("IncorrectExplanations"))
+        for field_name in [
+            "Question",
+            "OptionA",
+            "OptionB",
+            "OptionC",
+            "OptionD",
+            "CorrectOptions",
+            "CorrectExplanations",
+            "IncorrectOptions",
+            "IncorrectExplanations"
+        ]:
+            field = mm.new_field(field_name)
+            mm.add_field(m, field)
 
         # Add templates
         template = mm.new_template("MCQ Card")
