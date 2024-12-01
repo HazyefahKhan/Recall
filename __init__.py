@@ -32,43 +32,81 @@ def init_mcq_note_type():
         template = mm.new_template("MCQ Card")
         template['qfmt'] = """
         <div class="question">{{Question}}</div>
-        <div class="options" id="options">
-            <div class="option" onclick="toggleOption('A')" id="optionA">
-                <input type="checkbox" id="checkA" class="option-check">
-                <label>A. {{OptionA}}</label>
-            </div>
-            <div class="option" onclick="toggleOption('B')" id="optionB">
-                <input type="checkbox" id="checkB" class="option-check">
-                <label>B. {{OptionB}}</label>
-            </div>
-            <div class="option" onclick="toggleOption('C')" id="optionC">
-                <input type="checkbox" id="checkC" class="option-check">
-                <label>C. {{OptionC}}</label>
-            </div>
-            <div class="option" onclick="toggleOption('D')" id="optionD">
-                <input type="checkbox" id="checkD" class="option-check">
-                <label>D. {{OptionD}}</label>
-            </div>
-        </div>
+        <div id="options" class="options"></div>
         <button onclick="submitAnswer()" id="submit-btn" class="submit-button">Submit</button>
+
         <script>
-            // Store selected options
+            // Store selected options and original option mapping
             var selectedOptions = new Set();
             var submitted = false;
+            var originalToShuffled = {};
+            var shuffledToOriginal = {};
+
+            // Fisher-Yates shuffle algorithm
+            function shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // Create option element
+            function createOption(letter, content) {
+                return `
+                    <div class="option" onclick="toggleOption('${letter}')" id="option${letter}" data-original="${letter}">
+                        <input type="checkbox" id="check${letter}" class="option-check">
+                        <label>${content}</label>
+                    </div>
+                `;
+            }
+
+            // Initialize options in random order
+            function initializeOptions() {
+                const options = [
+                    { letter: 'A', content: `{{OptionA}}` },
+                    { letter: 'B', content: `{{OptionB}}` },
+                    { letter: 'C', content: `{{OptionC}}` },
+                    { letter: 'D', content: `{{OptionD}}` }
+                ];
+
+                // Create shuffled indices
+                const shuffledIndices = shuffleArray([0, 1, 2, 3]);
+                const letters = ['A', 'B', 'C', 'D'];
+                
+                // Create mappings
+                shuffledIndices.forEach((originalIndex, newIndex) => {
+                    originalToShuffled[letters[originalIndex]] = letters[newIndex];
+                    shuffledToOriginal[letters[newIndex]] = letters[originalIndex];
+                });
+
+                // Create options HTML
+                const optionsContainer = document.getElementById('options');
+                shuffledIndices.forEach((originalIndex, newIndex) => {
+                    const option = options[originalIndex];
+                    optionsContainer.innerHTML += createOption(letters[newIndex], option.content);
+                });
+
+                // Store mappings for the answer side
+                document.body.setAttribute('data-option-mapping', JSON.stringify({
+                    originalToShuffled,
+                    shuffledToOriginal
+                }));
+            }
 
             // Toggle option selection
-            function toggleOption(option) {
+            function toggleOption(letter) {
                 if (submitted) return;  // Prevent changes after submission
                 
-                var checkbox = document.getElementById('check' + option);
-                var optionDiv = document.getElementById('option' + option);
+                var checkbox = document.getElementById('check' + letter);
+                var optionDiv = document.getElementById('option' + letter);
                 
-                if (selectedOptions.has(option)) {
-                    selectedOptions.delete(option);
+                if (selectedOptions.has(letter)) {
+                    selectedOptions.delete(letter);
                     checkbox.checked = false;
                     optionDiv.classList.remove('selected');
                 } else {
-                    selectedOptions.add(option);
+                    selectedOptions.add(letter);
                     checkbox.checked = true;
                     optionDiv.classList.add('selected');
                 }
@@ -79,14 +117,24 @@ def init_mcq_note_type():
                 if (submitted) return;
                 submitted = true;
                 
-                // Store selected options in a data attribute for the answer side
-                document.body.setAttribute('data-selected-options', Array.from(selectedOptions).join(','));
+                // Convert selected options back to original letters before storing
+                const originalSelected = Array.from(selectedOptions).map(letter => shuffledToOriginal[letter]);
+                document.body.setAttribute('data-selected-options', originalSelected.join(','));
                 
                 // Disable further selections
                 document.getElementById('submit-btn').disabled = true;
                 
                 // Show answer
                 pycmd('ans');
+            }
+
+            // Only initialize if this is a new card (not the answer side)
+            if (!document.getElementById('answer')) {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initializeOptions);
+                } else {
+                    initializeOptions();
+                }
             }
         </script>
         """
@@ -96,22 +144,22 @@ def init_mcq_note_type():
         <div class="answer">
             <div class="options-explanations">
                 <div id="optionAExplanation" class="option-explanation">
-                    <div class="option-header">A. {{OptionA}}</div>
+                    <div class="option-header">{{OptionA}}</div>
                     <div class="explanation">{{ExplanationA}}</div>
                 </div>
                 
                 <div id="optionBExplanation" class="option-explanation">
-                    <div class="option-header">B. {{OptionB}}</div>
+                    <div class="option-header">{{OptionB}}</div>
                     <div class="explanation">{{ExplanationB}}</div>
                 </div>
                 
                 <div id="optionCExplanation" class="option-explanation">
-                    <div class="option-header">C. {{OptionC}}</div>
+                    <div class="option-header">{{OptionC}}</div>
                     <div class="explanation">{{ExplanationC}}</div>
                 </div>
                 
                 <div id="optionDExplanation" class="option-explanation">
-                    <div class="option-header">D. {{OptionD}}</div>
+                    <div class="option-header">{{OptionD}}</div>
                     <div class="explanation">{{ExplanationD}}</div>
                 </div>
             </div>
@@ -125,6 +173,7 @@ def init_mcq_note_type():
 
             // Apply colors and show selections
             function applyColorsAndSelections() {
+                // Get the original selected options
                 var selectedOptions = (document.body.getAttribute('data-selected-options') || '').split(',');
                 
                 ['A', 'B', 'C', 'D'].forEach(function(option) {
