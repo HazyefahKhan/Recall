@@ -23,8 +23,7 @@ def init_mcq_note_type():
             "ExplanationC",
             "OptionD",
             "ExplanationD",
-            "CorrectOptions",
-            "SelectedOptions"
+            "CorrectOptions"
         ]:
             field = mm.new_field(field_name)
             mm.add_field(m, field)
@@ -80,34 +79,13 @@ def init_mcq_note_type():
                 if (submitted) return;
                 submitted = true;
                 
-                // Store selections in the hidden field
-                var selections = Array.from(selectedOptions).join(',');
-                document.getElementById('selected-options').value = selections;
-                
                 // Disable further selections
                 document.getElementById('submit-btn').disabled = true;
                 
                 // Show answer
                 pycmd('ans');
             }
-
-            // Initialize from previous selections if they exist
-            document.addEventListener('DOMContentLoaded', function() {
-                var savedSelections = '{{SelectedOptions}}'.split(',');
-                savedSelections.forEach(function(option) {
-                    if (option.trim() !== '') {
-                        selectedOptions.add(option.trim());
-                        var checkbox = document.getElementById('check' + option.trim());
-                        var optionDiv = document.getElementById('option' + option.trim());
-                        if (checkbox && optionDiv) {
-                            checkbox.checked = true;
-                            optionDiv.classList.add('selected');
-                        }
-                    }
-                });
-            });
         </script>
-        <input type="hidden" id="selected-options" name="selected-options" value="{{SelectedOptions}}">
         """
         template['afmt'] = """
         {{FrontSide}}
@@ -115,73 +93,55 @@ def init_mcq_note_type():
         <div class="answer">
             <div class="options-explanations">
                 <div id="optionAExplanation" class="option-explanation">
-                    <div class="option-text">A. {{OptionA}}</div>
-                    <div class="explanation">
-                        <strong>Explanation:</strong><br>
-                        {{ExplanationA}}
-                    </div>
+                    <div class="option-header">A. {{OptionA}}</div>
+                    <div class="explanation">{{ExplanationA}}</div>
                 </div>
                 
                 <div id="optionBExplanation" class="option-explanation">
-                    <div class="option-text">B. {{OptionB}}</div>
-                    <div class="explanation">
-                        <strong>Explanation:</strong><br>
-                        {{ExplanationB}}
-                    </div>
+                    <div class="option-header">B. {{OptionB}}</div>
+                    <div class="explanation">{{ExplanationB}}</div>
                 </div>
                 
                 <div id="optionCExplanation" class="option-explanation">
-                    <div class="option-text">C. {{OptionC}}</div>
-                    <div class="explanation">
-                        <strong>Explanation:</strong><br>
-                        {{ExplanationC}}
-                    </div>
+                    <div class="option-header">C. {{OptionC}}</div>
+                    <div class="explanation">{{ExplanationC}}</div>
                 </div>
                 
                 <div id="optionDExplanation" class="option-explanation">
-                    <div class="option-text">D. {{OptionD}}</div>
-                    <div class="explanation">
-                        <strong>Explanation:</strong><br>
-                        {{ExplanationD}}
-                    </div>
+                    <div class="option-header">D. {{OptionD}}</div>
+                    <div class="explanation">{{ExplanationD}}</div>
                 </div>
-            </div>
-            
-            <div class="correct-answers">
-                <h3>Correct Answer(s):</h3>
-                <div class="correct-options">{{CorrectOptions}}</div>
             </div>
         </div>
         <script>
-            document.addEventListener('DOMContentLoaded', function() {
+            // Function to check if an option is correct
+            function isCorrectAnswer(option) {
                 var correctAnswers = '{{CorrectOptions}}'.split(',').map(s => s.trim());
-                var selected = '{{SelectedOptions}}'.split(',').map(s => s.trim());
-                
-                // Process all options
+                return correctAnswers.includes(option);
+            }
+
+            // Apply colors to options
+            function applyColors() {
                 ['A', 'B', 'C', 'D'].forEach(function(option) {
-                    var optionDiv = document.getElementById('option' + option);
                     var explanationDiv = document.getElementById('option' + option + 'Explanation');
-                    
-                    if (correctAnswers.includes(option)) {
-                        // Correct answer
-                        optionDiv.classList.add('correct');
-                        explanationDiv.classList.add('correct-explanation');
-                    } else {
-                        // Incorrect answer
-                        optionDiv.classList.add('incorrect');
-                        explanationDiv.classList.add('incorrect-explanation');
-                    }
-                    
-                    // Mark selected options
-                    if (selected.includes(option)) {
-                        optionDiv.classList.add('selected');
-                        var checkbox = document.getElementById('check' + option);
-                        if (checkbox) {
-                            checkbox.checked = true;
+                    if (explanationDiv) {
+                        if (isCorrectAnswer(option)) {
+                            explanationDiv.classList.add('correct-answer');
+                            console.log('Adding correct-answer to option ' + option);
+                        } else {
+                            explanationDiv.classList.add('incorrect-answer');
+                            console.log('Adding incorrect-answer to option ' + option);
                         }
                     }
                 });
-            });
+            }
+
+            // Call when DOM is loaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', applyColors);
+            } else {
+                applyColors();
+            }
         </script>
         """
         mm.add_template(m, template)
@@ -192,8 +152,8 @@ def init_mcq_note_type():
             font-family: arial;
             font-size: 20px;
             text-align: left;
-            color: black;
-            background-color: white;
+            color: white;
+            background-color: #2f2f2f;
             padding: 20px;
             max-width: 800px;
             margin: 0 auto;
@@ -203,6 +163,7 @@ def init_mcq_note_type():
             margin-bottom: 20px;
             font-weight: bold;
             font-size: 1.2em;
+            color: white;
         }
 
         .option {
@@ -214,25 +175,17 @@ def init_mcq_note_type():
             display: flex;
             align-items: center;
             transition: all 0.3s ease;
+            background-color: #3f3f3f;
+            color: white;
         }
 
         .option:hover {
-            background-color: #f0f0f0;
+            background-color: #4f4f4f;
         }
 
         .option.selected {
-            background-color: #e3f2fd;
-            border-color: #2196f3;
-        }
-
-        .option.correct {
-            background-color: #e8f5e9;
-            border-color: #4caf50;
-        }
-
-        .option.incorrect {
-            background-color: #ffebee;
-            border-color: #f44336;
+            background-color: #1a237e;
+            border-color: #3949ab;
         }
 
         .option-check {
@@ -251,7 +204,7 @@ def init_mcq_note_type():
         }
 
         .submit-button:disabled {
-            background-color: #ccc;
+            background-color: #666;
             cursor: not-allowed;
         }
 
@@ -263,48 +216,42 @@ def init_mcq_note_type():
             margin: 15px 0;
             padding: 15px;
             border-radius: 5px;
-            border: 1px solid #ccc;
+            background-color: #3f3f3f;
+            color: white;
+            border: 2px solid transparent;
         }
 
-        .correct-explanation {
-            border-color: #4caf50;
-            background-color: #f1f8e9;
+        .correct-answer {
+            border: 2px solid #4caf50 !important;
+            background-color: #1b5e20 !important;
         }
 
-        .incorrect-explanation {
-            border-color: #f44336;
-            background-color: #ffebee;
+        .incorrect-answer {
+            border: 2px solid #f44336 !important;
+            background-color: #b71c1c !important;
         }
 
-        .option-text {
+        .option-header {
             font-weight: bold;
             margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: rgba(255, 255, 255, 0.1);
         }
 
         .explanation {
-            padding: 10px;
-            border-left: 3px solid #2196f3;
-            background-color: #f5f5f5;
-            margin-top: 10px;
-        }
-
-        .correct-answers {
-            margin-top: 20px;
             padding: 15px;
-            border: 2px solid #4caf50;
+            margin-top: 10px;
+            background-color: rgba(0, 0, 0, 0.2);
             border-radius: 5px;
-            background-color: #f1f8e9;
-        }
-
-        h3 {
-            margin: 0 0 10px 0;
-            color: #333;
+            color: #fff;
+            line-height: 1.5;
         }
 
         hr {
             margin: 20px 0;
             border: none;
-            border-top: 2px solid #ccc;
+            border-top: 2px solid #666;
         }
         """
         
