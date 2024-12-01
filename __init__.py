@@ -16,13 +16,14 @@ def init_mcq_note_type():
         for field_name in [
             "Question",
             "OptionA",
+            "ExplanationA",
             "OptionB",
+            "ExplanationB",
             "OptionC",
+            "ExplanationC",
             "OptionD",
+            "ExplanationD",
             "CorrectOptions",
-            "CorrectExplanations",
-            "IncorrectOptions",
-            "IncorrectExplanations",
             "SelectedOptions"
         ]:
             field = mm.new_field(field_name)
@@ -93,46 +94,90 @@ def init_mcq_note_type():
             // Initialize from previous selections if they exist
             document.addEventListener('DOMContentLoaded', function() {
                 var savedSelections = '{{SelectedOptions}}'.split(',');
-                if (savedSelections[0] !== '') {
-                    savedSelections.forEach(function(option) {
-                        toggleOption(option.trim());
-                    });
-                }
+                savedSelections.forEach(function(option) {
+                    if (option.trim() !== '') {
+                        selectedOptions.add(option.trim());
+                        var checkbox = document.getElementById('check' + option.trim());
+                        var optionDiv = document.getElementById('option' + option.trim());
+                        if (checkbox && optionDiv) {
+                            checkbox.checked = true;
+                            optionDiv.classList.add('selected');
+                        }
+                    }
+                });
             });
         </script>
-        <input type="hidden" id="selected-options" name="selected-options">
+        <input type="hidden" id="selected-options" name="selected-options" value="{{SelectedOptions}}">
         """
         template['afmt'] = """
         {{FrontSide}}
         <hr id="answer">
         <div class="answer">
-            <div class="correct-options">
-                <h3>Correct Options:</h3>
-                {{CorrectOptions}}
+            <div class="options-explanations">
+                <div id="optionAExplanation" class="option-explanation">
+                    <div class="option-text">A. {{OptionA}}</div>
+                    <div class="explanation">
+                        <strong>Explanation:</strong><br>
+                        {{ExplanationA}}
+                    </div>
+                </div>
+                
+                <div id="optionBExplanation" class="option-explanation">
+                    <div class="option-text">B. {{OptionB}}</div>
+                    <div class="explanation">
+                        <strong>Explanation:</strong><br>
+                        {{ExplanationB}}
+                    </div>
+                </div>
+                
+                <div id="optionCExplanation" class="option-explanation">
+                    <div class="option-text">C. {{OptionC}}</div>
+                    <div class="explanation">
+                        <strong>Explanation:</strong><br>
+                        {{ExplanationC}}
+                    </div>
+                </div>
+                
+                <div id="optionDExplanation" class="option-explanation">
+                    <div class="option-text">D. {{OptionD}}</div>
+                    <div class="explanation">
+                        <strong>Explanation:</strong><br>
+                        {{ExplanationD}}
+                    </div>
+                </div>
             </div>
-            <div class="explanations">
-                <h3>Explanations:</h3>
-                {{CorrectExplanations}}
+            
+            <div class="correct-answers">
+                <h3>Correct Answer(s):</h3>
+                <div class="correct-options">{{CorrectOptions}}</div>
             </div>
         </div>
         <script>
-            // Highlight correct and incorrect answers after submission
             document.addEventListener('DOMContentLoaded', function() {
                 var correctAnswers = '{{CorrectOptions}}'.split(',').map(s => s.trim());
-                var selected = document.getElementById('selected-options').value.split(',');
+                var selected = '{{SelectedOptions}}'.split(',').map(s => s.trim());
                 
-                correctAnswers.forEach(function(option) {
+                // Process all options
+                ['A', 'B', 'C', 'D'].forEach(function(option) {
                     var optionDiv = document.getElementById('option' + option);
-                    if (optionDiv) {
+                    var explanationDiv = document.getElementById('option' + option + 'Explanation');
+                    
+                    if (correctAnswers.includes(option)) {
+                        // Correct answer
                         optionDiv.classList.add('correct');
+                        explanationDiv.classList.add('correct-explanation');
+                    } else {
+                        // Incorrect answer
+                        optionDiv.classList.add('incorrect');
+                        explanationDiv.classList.add('incorrect-explanation');
                     }
-                });
-                
-                selected.forEach(function(option) {
-                    if (!correctAnswers.includes(option)) {
-                        var optionDiv = document.getElementById('option' + option);
-                        if (optionDiv) {
-                            optionDiv.classList.add('incorrect');
+                    
+                    // Mark selected options
+                    if (selected.includes(option)) {
+                        optionDiv.classList.add('selected');
+                        var checkbox = document.getElementById('check' + option);
+                        if (checkbox) {
+                            checkbox.checked = true;
                         }
                     }
                 });
@@ -150,11 +195,14 @@ def init_mcq_note_type():
             color: black;
             background-color: white;
             padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
         }
 
         .question {
             margin-bottom: 20px;
             font-weight: bold;
+            font-size: 1.2em;
         }
 
         .option {
@@ -207,18 +255,56 @@ def init_mcq_note_type():
             cursor: not-allowed;
         }
 
-        .correct-options {
-            border: 2px solid #4caf50;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
+        .options-explanations {
+            margin-top: 20px;
         }
 
-        .explanations {
-            border: 2px solid #2196f3;
-            padding: 10px;
-            margin: 10px 0;
+        .option-explanation {
+            margin: 15px 0;
+            padding: 15px;
             border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        .correct-explanation {
+            border-color: #4caf50;
+            background-color: #f1f8e9;
+        }
+
+        .incorrect-explanation {
+            border-color: #f44336;
+            background-color: #ffebee;
+        }
+
+        .option-text {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .explanation {
+            padding: 10px;
+            border-left: 3px solid #2196f3;
+            background-color: #f5f5f5;
+            margin-top: 10px;
+        }
+
+        .correct-answers {
+            margin-top: 20px;
+            padding: 15px;
+            border: 2px solid #4caf50;
+            border-radius: 5px;
+            background-color: #f1f8e9;
+        }
+
+        h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        hr {
+            margin: 20px 0;
+            border: none;
+            border-top: 2px solid #ccc;
         }
         """
         
