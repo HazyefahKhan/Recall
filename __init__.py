@@ -135,6 +135,12 @@ def init_mcq_note_type():
                 } else {
                     initializeOptions();
                 }
+            } else {
+                // Hide submit button if this is the answer side
+                var submitBtn = document.getElementById('submit-btn');
+                if (submitBtn) {
+                    submitBtn.style.display = 'none';
+                }
             }
         </script>
         """
@@ -165,6 +171,12 @@ def init_mcq_note_type():
             </div>
         </div>
         <script>
+            // Hide submit button on answer side
+            var submitBtn = document.getElementById('submit-btn');
+            if (submitBtn) {
+                submitBtn.style.display = 'none';
+            }
+
             // Function to check if an option is correct
             function isCorrectAnswer(option) {
                 var correctAnswers = '{{CorrectOptions}}'.split(',').map(s => s.trim());
@@ -206,7 +218,7 @@ def init_mcq_note_type():
         """
         mm.add_template(m, template)
 
-        # Add CSS
+        # CSS remains unchanged
         m['css'] = """
         .card {
             font-family: arial;
