@@ -450,6 +450,9 @@ def create_csharp_note_type():
         template['afmt'] = """
         {{FrontSide}}
         <hr id="answer">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js" data-manual></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-csharp.min.js"></script>
         <div class="answer">
             <div class="explanation-container correct-answer">
                 <div class="option-header">Correct Answer: {{CorrectOption}}</div>
@@ -485,6 +488,11 @@ def create_csharp_note_type():
         </div>
 
         <script>
+            // Fix for line breaks in Prism
+            Prism.hooks.add("before-highlight", function (env) {
+                env.code = env.element.innerText;
+            });
+
             function highlightSelection() {
                 var selectedOption = parseInt(document.body.getAttribute('data-selected-option'));
                 var containers = document.querySelectorAll('.explanation-container');
@@ -494,6 +502,11 @@ def create_csharp_note_type():
                 } else {
                     containers[selectedOption].classList.add('selected-incorrect');
                 }
+                
+                // Initialize Prism.js highlighting for all code blocks
+                document.querySelectorAll('code').forEach(function(code) {
+                    Prism.highlightElement(code);
+                });
             }
 
             if (document.readyState === 'loading') {
@@ -608,7 +621,7 @@ def create_csharp_note_type():
             border-top: 2px solid #666;
         }
 
-        /* C# specific code styling */
+        /* Code example styling with Prism.js compatibility */
         .code-example {
             margin: 10px 0;
             padding: 15px;
@@ -619,13 +632,26 @@ def create_csharp_note_type():
 
         .code-example pre {
             margin: 0;
-            font-family: 'Fira Code', monospace;
-            font-size: 14px;
-            line-height: 1.5;
+            padding: 0;
+            background: transparent;
+            white-space: pre-wrap !important;
         }
 
         .code-example code {
-            color: #d4d4d4;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            background: transparent;
+            white-space: pre-wrap !important;
+        }
+
+        /* Override Prism.js styles */
+        code[class*="language-"],
+        pre[class*="language-"] {
+            white-space: pre-wrap !important;
+            word-break: break-all;
+            word-wrap: break-word;
+            background: transparent;
         }
 
         .selected-correct {
