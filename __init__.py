@@ -3,355 +3,227 @@ from aqt import gui_hooks
 from aqt.qt import *
 from anki.models import ModelManager
 from anki.notes import Note
+import re
 
-def create_mcq_note_type(num_options, model_name):
-    """Create an MCQ note type with the specified number of options."""
-    if model_name not in mw.col.models.all_names():
-        mm = mw.col.models
-        m = mm.new(model_name)
+class ExamInputDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
         
-        # Add Question field
-        mm.add_field(m, mm.new_field("Question"))
+    def setup_ui(self):
+        self.setWindowTitle("Create Exam Question")
+        self.setMinimumWidth(800)
         
-        # Add option and explanation fields
-        letters = [chr(65 + i) for i in range(num_options)]  # A, B, C, etc.
-        for letter in letters:
-            mm.add_field(m, mm.new_field(f"Option{letter}"))
-            mm.add_field(m, mm.new_field(f"Explanation{letter}"))
+        layout = QVBoxLayout(self)
         
-        # Add CorrectOptions field
-        mm.add_field(m, mm.new_field("CorrectOptions"))
-
-        # Create front template with dynamic options
-        options_html = ""
-        for letter in letters:
-            options_html += f"""
-                <div class="option" onclick="toggleOption('{letter}')" id="option{letter}" data-original="{letter}">
-                    <input type="checkbox" id="check{letter}" class="option-check">
-                    <label>{{{{Option{letter}}}}}</label>
-                </div>"""
-
-        # Create explanations HTML for the back template
-        explanations_html = ""
-        for letter in letters:
-            explanations_html += f"""
-                <div id="option{letter}Explanation" class="option-explanation">
-                    <div class="option-header">{{{{Option{letter}}}}}</div>
-                    <div class="explanation">{{{{Explanation{letter}}}}}</div>
-                </div>"""
-
-        # Create template
-        template = mm.new_template(model_name)
-        template['qfmt'] = f"""
-        <div class="question">{{{{Question}}}}</div>
-        <div id="options" class="options"></div>
-        <button onclick="submitAnswer()" id="submit-btn" class="submit-button">Submit</button>
-
-        <script>
-            // Store selected options and original option mapping
-            var selectedOptions = new Set();
-            var submitted = false;
-            var originalToShuffled = {{}};
-            var shuffledToOriginal = {{}};
-
-            // Fisher-Yates shuffle algorithm
-            function shuffleArray(array) {{
-                for (let i = array.length - 1; i > 0; i--) {{
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [array[i], array[j]] = [array[j], array[i]];
-                }}
-                return array;
-            }}
-
-            // Create option element
-            function createOption(letter, content) {{
-                return `
-                    <div class="option" onclick="toggleOption('${{letter}}')" id="option${{letter}}" data-original="${{letter}}">
-                        <input type="checkbox" id="check${{letter}}" class="option-check">
-                        <label>${{content}}</label>
-                    </div>
-                `;
-            }}
-
-            // Initialize options in random order
-            function initializeOptions() {{
-                const options = [
-                    {', '.join([f"{{ letter: '{letter}', content: `{{{{Option{letter}}}}}` }}" for letter in letters])}
-                ];
-
-                // Create shuffled indices
-                const shuffledIndices = shuffleArray([{', '.join(map(str, range(num_options)))}]);
-                const letters = [{', '.join([f"'{letter}'" for letter in letters])}];
-                
-                // Create mappings
-                shuffledIndices.forEach((originalIndex, newIndex) => {{
-                    originalToShuffled[letters[originalIndex]] = letters[newIndex];
-                    shuffledToOriginal[letters[newIndex]] = letters[originalIndex];
-                }});
-
-                // Create options HTML
-                const optionsContainer = document.getElementById('options');
-                shuffledIndices.forEach((originalIndex, newIndex) => {{
-                    const option = options[originalIndex];
-                    optionsContainer.innerHTML += createOption(letters[newIndex], option.content);
-                }});
-
-                // Store mappings for the answer side
-                document.body.setAttribute('data-option-mapping', JSON.stringify({{
-                    originalToShuffled,
-                    shuffledToOriginal
-                }}));
-            }}
-
-            // Toggle option selection
-            function toggleOption(letter) {{
-                if (submitted) return;  // Prevent changes after submission
-                
-                var checkbox = document.getElementById('check' + letter);
-                var optionDiv = document.getElementById('option' + letter);
-                
-                if (selectedOptions.has(letter)) {{
-                    selectedOptions.delete(letter);
-                    checkbox.checked = false;
-                    optionDiv.classList.remove('selected');
-                }} else {{
-                    selectedOptions.add(letter);
-                    checkbox.checked = true;
-                    optionDiv.classList.add('selected');
-                }}
-            }}
-
-            // Submit answer
-            function submitAnswer() {{
-                if (submitted) return;
-                submitted = true;
-                
-                // Convert selected options back to original letters before storing
-                const originalSelected = Array.from(selectedOptions).map(letter => shuffledToOriginal[letter]);
-                document.body.setAttribute('data-selected-options', originalSelected.join(','));
-                
-                // Disable further selections
-                document.getElementById('submit-btn').disabled = true;
-                
-                // Show answer
-                pycmd('ans');
-            }}
-
-            // Only initialize if this is a new card (not the answer side)
-            if (!document.getElementById('answer')) {{
-                if (document.readyState === 'loading') {{
-                    document.addEventListener('DOMContentLoaded', initializeOptions);
-                }} else {{
-                    initializeOptions();
-                }}
-            }} else {{
-                // Hide submit button if this is the answer side
-                var submitBtn = document.getElementById('submit-btn');
-                if (submitBtn) {{
-                    submitBtn.style.display = 'none';
-                }}
-            }}
-        </script>
-        """
-
-        template['afmt'] = f"""
-        {{{{FrontSide}}}}
-        <hr id="answer">
-        <div class="answer">
-            <div class="options-explanations">
-                {explanations_html}
-            </div>
-        </div>
-        <script>
-            // Hide submit button on answer side
-            var submitBtn = document.getElementById('submit-btn');
-            if (submitBtn) {{
-                submitBtn.style.display = 'none';
-            }}
-
-            // Function to check if an option is correct
-            function isCorrectAnswer(option) {{
-                var correctAnswers = '{{{{CorrectOptions}}}}'.split(',').map(s => s.trim());
-                return correctAnswers.includes(option);
-            }}
-
-            // Apply colors and show selections
-            function applyColorsAndSelections() {{
-                // Get the original selected options
-                var selectedOptions = (document.body.getAttribute('data-selected-options') || '').split(',');
-                
-                [{', '.join([f"'{letter}'" for letter in letters])}].forEach(function(option) {{
-                    var explanationDiv = document.getElementById('option' + option + 'Explanation');
-                    var headerDiv = explanationDiv.querySelector('.option-header');
-                    
-                    if (explanationDiv) {{
-                        // Apply correct/incorrect colors
-                        if (isCorrectAnswer(option)) {{
-                            explanationDiv.classList.add('correct-answer');
-                        }} else {{
-                            explanationDiv.classList.add('incorrect-answer');
-                        }}
-                        
-                        // Show selection by adding blue background to header
-                        if (selectedOptions.includes(option)) {{
-                            headerDiv.classList.add('was-selected');
-                        }}
-                    }}
-                }});
-            }}
-
-            // Call when DOM is loaded
-            if (document.readyState === 'loading') {{
-                document.addEventListener('DOMContentLoaded', applyColorsAndSelections);
-            }} else {{
-                applyColorsAndSelections();
-            }}
-        </script>
-        """
-
-        # Add template to model before adding CSS
-        mm.add_template(m, template)
-
-        # Add CSS (unchanged)
-        m['css'] = """
-        .card {
-            font-family: arial;
-            font-size: 20px;
-            text-align: left;
-            color: white;
-            background-color: #2f2f2f;
-            padding: 20px;
-            max-width: 800px;
-            margin: 0 auto;
-        }
-
-        .question {
-            margin-bottom: 20px;
-            font-weight: bold;
-            font-size: 1.2em;
-            color: white;
-        }
-
-        .option {
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            transition: all 0.3s ease;
-            background-color: #3f3f3f;
-            color: white;
-        }
-
-        .option:hover {
-            background-color: #4f4f4f;
-        }
-
-        .option.selected {
-            background-color: #1a237e;
-            border-color: #3949ab;
-        }
-
-        .option-check {
-            margin-right: 10px;
-        }
-
-        .submit-button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background-color: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        .submit-button:disabled {
-            background-color: #666;
-            cursor: not-allowed;
-        }
-
-        .options-explanations {
-            margin-top: 20px;
-        }
-
-        .option-explanation {
-            margin: 15px 0;
-            padding: 15px;
-            border-radius: 5px;
-            background-color: #3f3f3f;
-            color: white;
-            border: 2px solid transparent;
-        }
-
-        .correct-answer {
-            border: 2px solid #4caf50 !important;
-            background-color: #1b5e20 !important;
-        }
-
-        .incorrect-answer {
-            border: 2px solid #f44336 !important;
-            background-color: #b71c1c !important;
-        }
-
-        .option-header {
-            font-weight: bold;
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 5px;
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .option-header.was-selected {
-            background-color: #1a237e !important;
-        }
-
-        .explanation {
-            padding: 15px;
-            margin-top: 10px;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 5px;
-            color: #fff;
-            line-height: 1.5;
-        }
-
-        hr {
-            margin: 20px 0;
-            border: none;
-            border-top: 2px solid #666;
-        }
-        """
+        # Deck selector
+        deck_layout = QHBoxLayout()
+        deck_label = QLabel("Select Deck:")
+        self.deck_combo = QComboBox()
+        self.populate_deck_list()
+        deck_layout.addWidget(deck_label)
+        deck_layout.addWidget(self.deck_combo)
+        layout.addLayout(deck_layout)
         
-        # Add the model to the collection
-        mm.add(m)
-        return m
+        # Input area
+        self.input_text = QPlainTextEdit()
+        self.input_text.setPlaceholderText("""Convert the following C# Doc
+___
 
-def create_csharp_note_type():
-    """Create a C# specific note type with code examples."""
-    model_name = "CSharpCard"
+to this outline
+___
+......
+##### Question 
+[Insert question text here]
+___
+##### Correct Option
+[Insert option text (70-90 words) here]
+
+##### Explanation
+[Insert detailed explanation of this option]
+##### Code Example
+```csharp
+
+[Insert code example here]
+
+```
+___
+##### Incorrect Option
+[Insert option text (70-90 words) here]
+
+##### Incorrect Option Explanation
+**What reasoning lead to this incorrect answer:** [Insert a reason why this option might seem correct]
+**Why the reasoning is wrong**: [Insert why reasoning is incorrect and correct it]
+##### Code Example
+```csharp
+
+[Insert code example here]
+
+```
+___""")
+        self.input_text.setMinimumHeight(400)
+        layout.addWidget(self.input_text)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.create_button = QPushButton("Create Card")
+        self.create_button.clicked.connect(self.create_card)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        
+        button_layout.addWidget(self.create_button)
+        button_layout.addWidget(self.cancel_button)
+        layout.addLayout(button_layout)
+
+    def populate_deck_list(self):
+        """Populate the deck selector with all available decks and subdecks."""
+        decks = mw.col.decks.all_names_and_ids()
+        for deck in decks:
+            deck_name = deck.name
+            indent = deck_name.count("::") * 4  # 4 spaces per level
+            display_name = " " * indent + deck_name.split("::")[-1]
+            self.deck_combo.addItem(display_name, deck.id)
+
+    def parse_input(self):
+        text = self.input_text.toPlainText()
+        
+        # Parse sections using regex
+        sections = {}
+        
+        # Skip the initial "Convert the following..." part
+        text = text.split("___\n......\n", 1)[-1]
+        
+        # Extract question
+        question_match = re.search(r'##### Question\s*\n(.*?)(?=\n___|\Z)', text, re.DOTALL)
+        if question_match:
+            sections['question'] = question_match.group(1).strip()
+            
+        # Extract correct option
+        correct_match = re.search(r'##### Correct Option\s*\n(.*?)(?=\n##### Explanation|\n___|\Z)', text, re.DOTALL)
+        if correct_match:
+            sections['correct_option'] = correct_match.group(1).strip()
+            
+        # Extract correct explanation
+        correct_exp_match = re.search(r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)', text, re.DOTALL)
+        if correct_exp_match:
+            sections['correct_explanation'] = correct_exp_match.group(1).strip()
+            
+        # Extract correct code example
+        correct_code_match = re.search(r'##### Code Example\s*\n```csharp\s*\n(.*?)```', text, re.DOTALL)
+        if correct_code_match:
+            sections['correct_code'] = correct_code_match.group(1).strip()
+            
+        # Extract incorrect options
+        incorrect_sections = re.finditer(
+            r'##### Incorrect Option\s*\n(.*?)\n\n##### Incorrect Option Explanation\s*\n' + 
+            r'\*\*What reasoning lead to this incorrect answer:\*\* (.*?)\n' +
+            r'\*\*Why the reasoning is wrong\*\*: (.*?)\n' +
+            r'##### Code Example\s*\n```csharp\s*\n(.*?)```',
+            text, re.DOTALL
+        )
+        
+        sections['incorrect_options'] = []
+        for match in incorrect_sections:
+            option_text = match.group(1).strip()
+            reasoning = match.group(2).strip()
+            why_wrong = match.group(3).strip()
+            code = match.group(4).strip()
+            
+            explanation = f"<b>What reasoning lead to this incorrect answer:</b> {reasoning}<br><br>" + \
+                         f"<b>Why the reasoning is wrong</b>: {why_wrong}"
+            
+            sections['incorrect_options'].append({
+                'option': option_text,
+                'explanation': explanation,
+                'code': code
+            })
+            
+        return sections
+
+    def create_card(self):
+        try:
+            sections = self.parse_input()
+            
+            # Get selected deck ID
+            deck_id = self.deck_combo.currentData()
+            if not deck_id:
+                QMessageBox.critical(self, "Error", "Please select a deck")
+                return
+            
+            # Count correct and incorrect options
+            correct_count = 1  # Since we're parsing one correct option
+            incorrect_count = len(sections['incorrect_options'])
+            
+            # Create note
+            model_name = f"ExamCard{correct_count}{incorrect_count}"
+            model = mw.col.models.by_name(model_name)
+            if not model:
+                create_exam_note_type(correct_count, incorrect_count)
+                model = mw.col.models.by_name(model_name)
+                
+            note = Note(mw.col, model)
+            
+            # Fill note fields
+            note['Question'] = sections['question']
+            note['CorrectOption'] = sections['correct_option']
+            note['CorrectExplanation'] = sections['correct_explanation']
+            note['CorrectCodeExample'] = sections['correct_code']
+            
+            for i, incorrect in enumerate(sections['incorrect_options'], 1):
+                note[f'IncorrectOption{i}'] = incorrect['option']
+                note[f'IncorrectExplanation{i}'] = incorrect['explanation']
+                note[f'IncorrectCodeExample{i}'] = incorrect['code']
+            
+            # Add note to selected deck
+            mw.col.add_note(note, deck_id)
+            mw.reset()
+            
+            QMessageBox.information(self, "Success", f"Card created successfully with {correct_count} correct and {incorrect_count} incorrect options!")
+            self.accept()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create card: {str(e)}")
+
+def show_exam_input_dialog():
+    dialog = ExamInputDialog(mw)
+    dialog.exec()
+
+# Add menu item
+action = QAction("Create Exam Question", mw)
+action.triggered.connect(show_exam_input_dialog)
+mw.form.menuTools.addAction(action)
+
+def create_exam_note_type(correct_options, incorrect_options):
+    """Create an exam note type with code examples.
+    
+    Args:
+        correct_options (int): Number of correct options
+        incorrect_options (int): Number of incorrect options
+    """
+    model_name = f"ExamCard{correct_options}{incorrect_options}"
     if model_name not in mw.col.models.all_names():
         mm = mw.col.models
         m = mm.new(model_name)
         
         # Add fields
-        fields = [
-            "Question",
-            "CorrectOption",
-            "CorrectExplanation",
-            "CorrectCodeExample",
-            "IncorrectOption1",
-            "IncorrectExplanation1",
-            "IncorrectCodeExample1",
-            "IncorrectOption2",
-            "IncorrectExplanation2",
-            "IncorrectCodeExample2",
-            "IncorrectOption3",
-            "IncorrectExplanation3",
-            "IncorrectCodeExample3"
-        ]
+        fields = ["Question"]
+        
+        # Add correct options fields
+        for i in range(correct_options):
+            suffix = str(i + 1) if correct_options > 1 else ""
+            fields.extend([
+                f"CorrectOption{suffix}",
+                f"CorrectExplanation{suffix}",
+                f"CorrectCodeExample{suffix}"
+            ])
+        
+        # Add incorrect options fields
+        for i in range(incorrect_options):
+            fields.extend([
+                f"IncorrectOption{i + 1}",
+                f"IncorrectExplanation{i + 1}",
+                f"IncorrectCodeExample{i + 1}"
+            ])
         
         for field in fields:
             mm.add_field(m, mm.new_field(field))
@@ -391,12 +263,10 @@ def create_csharp_note_type():
             function initializeOptions() {
                 const options = [
                     { content: `{{CorrectOption}}`, isCorrect: true },
-                    { content: `{{IncorrectOption1}}`, isCorrect: false },
-                    { content: `{{IncorrectOption2}}`, isCorrect: false },
-                    { content: `{{IncorrectOption3}}`, isCorrect: false }
+                    """ + ",\n".join([f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, isCorrect: false }}" for i in range(incorrect_options)]) + """
                 ];
 
-                const shuffledIndices = shuffleArray([0, 1, 2, 3]);
+                const shuffledIndices = shuffleArray([""" + ", ".join(map(str, range(incorrect_options + 1))) + """]);
                 
                 const optionsContainer = document.getElementById('options');
                 shuffledIndices.forEach((originalIndex, newIndex) => {
@@ -462,29 +332,15 @@ def create_csharp_note_type():
                 </div>
             </div>
 
+            """ + "\n".join([f"""
             <div class="explanation-container incorrect-answer">
-                <div class="option-header">{{IncorrectOption1}}</div>
-                <div class="explanation">{{IncorrectExplanation1}}</div>
+                <div class="option-header">{{{{IncorrectOption{i + 1}}}}}</div>
+                <div class="explanation">{{{{IncorrectExplanation{i + 1}}}}}</div>
                 <div class="code-example">
-                    <pre><code class="language-csharp">{{IncorrectCodeExample1}}</code></pre>
+                    <pre><code class="language-csharp">{{{{IncorrectCodeExample{i + 1}}}}}</code></pre>
                 </div>
-            </div>
+            </div>""" for i in range(incorrect_options)]) + """
 
-            <div class="explanation-container incorrect-answer">
-                <div class="option-header">{{IncorrectOption2}}</div>
-                <div class="explanation">{{IncorrectExplanation2}}</div>
-                <div class="code-example">
-                    <pre><code class="language-csharp">{{IncorrectCodeExample2}}</code></pre>
-                </div>
-            </div>
-
-            <div class="explanation-container incorrect-answer">
-                <div class="option-header">{{IncorrectOption3}}</div>
-                <div class="explanation">{{IncorrectExplanation3}}</div>
-                <div class="code-example">
-                    <pre><code class="language-csharp">{{IncorrectCodeExample3}}</code></pre>
-                </div>
-            </div>
         </div>
 
         <script>
@@ -625,9 +481,10 @@ def create_csharp_note_type():
         .code-example {
             margin: 10px 0;
             padding: 15px;
-            background-color: #1e1e1e;
+            background-color: #282C34;
             border-radius: 5px;
             overflow-x: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
         .code-example pre {
@@ -640,18 +497,83 @@ def create_csharp_note_type():
         .code-example code {
             font-family: 'Fira Code', 'Consolas', monospace;
             font-size: 14px;
-            line-height: 1.5;
+            line-height: 1.6;
             background: transparent;
             white-space: pre-wrap !important;
+            color: #ABB2BF;
+        }
+
+        /* Syntax highlighting colors */
+        .token.comment,
+        .token.prolog,
+        .token.doctype,
+        .token.cdata {
+            color: #5C6370 !important;
+            font-style: italic !important;
+        }
+
+        .token.function {
+            color: #61AFEF !important;
+        }
+
+        .token.class-name {
+            color: #E5C07B !important;
+        }
+
+        .token.keyword {
+            color: #C678DD !important;
+        }
+
+        .token.boolean,
+        .token.number {
+            color: #D19A66 !important;
+        }
+
+        .token.string {
+            color: #98C379 !important;
+        }
+
+        .token.operator {
+            color: #56B6C2 !important;
+            background: none !important;
+        }
+
+        .token.punctuation {
+            color: #ABB2BF !important;
+        }
+
+        .token.property {
+            color: #E06C75 !important;
+        }
+
+        .token.tag {
+            color: #E06C75 !important;
+        }
+
+        .token.attr-name {
+            color: #D19A66 !important;
+        }
+
+        .token.attr-value {
+            color: #98C379 !important;
         }
 
         /* Override Prism.js styles */
         code[class*="language-"],
         pre[class*="language-"] {
-            white-space: pre-wrap !important;
-            word-break: break-all;
-            word-wrap: break-word;
+            color: #ABB2BF;
             background: transparent;
+            text-shadow: none;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            text-align: left;
+            white-space: pre-wrap;
+            word-spacing: normal;
+            word-break: normal;
+            word-wrap: break-word;
+            line-height: 1.6;
+            tab-size: 4;
+            hyphens: none;
         }
 
         .selected-correct {
@@ -677,15 +599,10 @@ def create_csharp_note_type():
         return m
 
 def init():
-    # Create existing MCQ variants
-    create_mcq_note_type(2, "MCQ--")
-    create_mcq_note_type(3, "MCQ-")
-    create_mcq_note_type(4, "MCQ")
-    create_mcq_note_type(5, "MCQ+")
-    create_mcq_note_type(6, "MCQ++")
-    
-    # Create the new C# card type
-    create_csharp_note_type()
+    # Create exam card types
+    create_exam_note_type(1, 3)  # ExamCard13 (1 correct, 3 incorrect options)
+    create_exam_note_type(1, 4)  # ExamCard14 (1 correct, 4 incorrect options)
+    create_exam_note_type(1, 5)  # ExamCard14 (1 correct, 4 incorrect options)
 
 # Add the init hook
 gui_hooks.profile_did_open.append(init) 
