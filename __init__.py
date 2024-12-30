@@ -3,12 +3,33 @@ from aqt import gui_hooks
 from aqt.qt import *
 from anki.models import ModelManager
 from anki.notes import Note
+from anki.utils import html_to_text_line
 import re
+import markdown
+
+def convert_markdown_to_html(text):
+    """Convert markdown text to HTML with proper formatting."""
+    # Convert markdown to HTML using Anki's built-in markdown
+    html = markdown.markdown(text)
+    
+    # Remove paragraph tags around the text (Anki adds its own)
+    html = re.sub(r'^\s*<p>(.*?)</p>\s*$', r'\1', html, flags=re.DOTALL)
+    
+    # Convert code blocks to match Anki's styling
+    html = re.sub(
+        r'<pre><code>(.*?)</code></pre>',
+        lambda m: f'<div class="code-example"><pre><code class="language-csharp">{m.group(1)}</code></pre></div>',
+        html,
+        flags=re.DOTALL
+    )
+    
+    return html
 
 class ExamInputDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
+        self.load_last_deck()  # Load last selected deck
         
     def setup_ui(self):
         self.setWindowTitle("Create Exam Question")
@@ -84,6 +105,20 @@ ___""")
             display_name = " " * indent + deck_name.split("::")[-1]
             self.deck_combo.addItem(display_name, deck.id)
 
+    def load_last_deck(self):
+        """Load the last selected deck from Anki's configuration."""
+        last_deck_id = mw.pm.profile.get('exam_simulator_last_deck', None)
+        if last_deck_id is not None:
+            # Find the index of the last used deck in the combo box
+            index = self.deck_combo.findData(last_deck_id)
+            if index >= 0:
+                self.deck_combo.setCurrentIndex(index)
+
+    def save_last_deck(self):
+        """Save the currently selected deck ID to Anki's configuration."""
+        deck_id = self.deck_combo.currentData()
+        mw.pm.profile['exam_simulator_last_deck'] = deck_id
+
     def parse_input(self):
         text = self.input_text.toPlainText()
         
@@ -113,10 +148,11 @@ ___""")
         if correct_code_match:
             sections['correct_code'] = correct_code_match.group(1).strip()
             
-        # Extract incorrect options
+        # Extract incorrect options with a more robust pattern
         incorrect_sections = re.finditer(
-            r'##### Incorrect Option\s*\n(.*?)\n\n##### Incorrect Option Explanation\s*\n' + 
-            r'\*\*What reasoning lead to this incorrect answer:\*\* (.*?)\n' +
+            r'##### Incorrect Option\s*\n(.*?)\n\n' + 
+            r'##### Incorrect Option Explanation\s*\n' + 
+            r'\*\*What (?:reasoning lead|reasoning lead|Why reasoning lead) to this incorrect answer:\*\* (.*?)\n' +
             r'\*\*Why the reasoning is wrong\*\*: (.*?)\n' +
             r'##### Code Example\s*\n```csharp\s*\n(.*?)```',
             text, re.DOTALL
@@ -137,6 +173,42 @@ ___""")
                 'explanation': explanation,
                 'code': code
             })
+
+        # Validate that we have the expected number of incorrect options
+        if len(sections['incorrect_options']) < 3:
+            # Try alternative pattern for the last incorrect option which might have slightly different formatting
+            alt_pattern = (
+                r'##### Incorrect Option\s*\n(.*?)\n\n' + 
+                r'##### Incorrect Option Explanation\s*\n' + 
+                r'\*\*(?:Why|What) (?:reasoning lead|reasoning leads|reasoning led) to this incorrect answer:\*\* (.*?)\n' +
+                r'\*\*Why the reasoning is wrong\*\*: (.*?)\n' +
+                r'##### Code Example\s*\n```csharp\s*\n(.*?)```'
+            )
+            
+            remaining_text = text
+            for existing_option in sections['incorrect_options']:
+                # Remove already found options from the text to avoid duplicates
+                option_text = existing_option['option']
+                remaining_text = remaining_text.split(option_text, 1)[-1]
+            
+            additional_matches = re.finditer(alt_pattern, remaining_text, re.DOTALL)
+            for match in additional_matches:
+                if len(sections['incorrect_options']) >= 3:
+                    break
+                    
+                option_text = match.group(1).strip()
+                reasoning = match.group(2).strip()
+                why_wrong = match.group(3).strip()
+                code = match.group(4).strip()
+                
+                explanation = f"<b>What reasoning lead to this incorrect answer:</b> {reasoning}<br><br>" + \
+                             f"<b>Why the reasoning is wrong</b>: {why_wrong}"
+                
+                sections['incorrect_options'].append({
+                    'option': option_text,
+                    'explanation': explanation,
+                    'code': code
+                })
             
         return sections
 
@@ -149,6 +221,9 @@ ___""")
             if not deck_id:
                 QMessageBox.critical(self, "Error", "Please select a deck")
                 return
+
+            # Save the selected deck before creating the card
+            self.save_last_deck()
             
             # Count correct and incorrect options
             correct_count = 1  # Since we're parsing one correct option
@@ -163,14 +238,17 @@ ___""")
                 
             note = Note(mw.col, model)
             
-            # Fill note fields
-            note['Question'] = sections['question']
-            note['CorrectOption'] = sections['correct_option']
-            note['CorrectExplanation'] = sections['correct_explanation']
+            # Fill note fields with converted HTML
+            note['Question'] = convert_markdown_to_html(sections['question'])
+            note['CorrectOption'] = convert_markdown_to_html(sections['correct_option'])
+            note['CorrectExplanation'] = convert_markdown_to_html(sections['correct_explanation'])
+            
+            # For code examples, we want to preserve the formatting but ensure proper syntax highlighting
             note['CorrectCodeExample'] = sections['correct_code']
             
             for i, incorrect in enumerate(sections['incorrect_options'], 1):
-                note[f'IncorrectOption{i}'] = incorrect['option']
+                note[f'IncorrectOption{i}'] = convert_markdown_to_html(incorrect['option'])
+                # The explanation is already in HTML format with <b> tags
                 note[f'IncorrectExplanation{i}'] = incorrect['explanation']
                 note[f'IncorrectCodeExample{i}'] = incorrect['code']
             
@@ -191,6 +269,7 @@ def show_exam_input_dialog():
 # Add menu item
 action = QAction("Create Exam Question", mw)
 action.triggered.connect(show_exam_input_dialog)
+action.setShortcut(QKeySequence("Ctrl+Shift+E"))  # Add keyboard shortcut
 mw.form.menuTools.addAction(action)
 
 def create_exam_note_type(correct_options, incorrect_options):
@@ -261,24 +340,39 @@ def create_exam_note_type(correct_options, incorrect_options):
             }
 
             function initializeOptions() {
-                const options = [
-                    { content: `{{CorrectOption}}`, isCorrect: true },
-                    """ + ",\n".join([f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, isCorrect: false }}" for i in range(incorrect_options)]) + """
-                ];
+                try {
+                    const options = [
+                        { content: `{{CorrectOption}}`, isCorrect: true },
+                        """ + ",\n".join([f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, isCorrect: false }}" for i in range(incorrect_options)]) + """
+                    ];
 
-                const shuffledIndices = shuffleArray([""" + ", ".join(map(str, range(incorrect_options + 1))) + """]);
-                
-                const optionsContainer = document.getElementById('options');
-                shuffledIndices.forEach((originalIndex, newIndex) => {
-                    originalToShuffled[originalIndex] = newIndex;
-                    shuffledToOriginal[newIndex] = originalIndex;
-                    optionsContainer.innerHTML += createOption(newIndex, options[originalIndex].content);
-                });
+                    const shuffledIndices = shuffleArray([""" + ", ".join(map(str, range(incorrect_options + 1))) + """]);
+                    
+                    const optionsContainer = document.getElementById('options');
+                    if (!optionsContainer) {
+                        console.error('Options container not found');
+                        return;
+                    }
 
-                document.body.setAttribute('data-option-mapping', JSON.stringify({
-                    originalToShuffled,
-                    shuffledToOriginal
-                }));
+                    // Clear existing options
+                    optionsContainer.innerHTML = '';
+                    
+                    shuffledIndices.forEach((originalIndex, newIndex) => {
+                        originalToShuffled[originalIndex] = newIndex;
+                        shuffledToOriginal[newIndex] = originalIndex;
+                        const option = options[originalIndex];
+                        if (option && option.content) {
+                            optionsContainer.innerHTML += createOption(newIndex, option.content);
+                        }
+                    });
+
+                    document.body.setAttribute('data-option-mapping', JSON.stringify({
+                        originalToShuffled,
+                        shuffledToOriginal
+                    }));
+                } catch (error) {
+                    console.error('Error initializing options:', error);
+                }
             }
 
             function selectOption(index) {
@@ -291,8 +385,10 @@ def create_exam_note_type(correct_options, incorrect_options):
                 });
                 
                 const selectedDiv = document.getElementById('option' + index);
-                selectedDiv.classList.add('selected');
-                selectedDiv.querySelector('input[type="radio"]').checked = true;
+                if (selectedDiv) {
+                    selectedDiv.classList.add('selected');
+                    selectedDiv.querySelector('input[type="radio"]').checked = true;
+                }
             }
 
             function submitAnswer() {
@@ -306,12 +402,11 @@ def create_exam_note_type(correct_options, incorrect_options):
                 pycmd('ans');
             }
 
-            if (!document.getElementById('answer')) {
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initializeOptions);
-                } else {
-                    initializeOptions();
-                }
+            // Initialize options when the document is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeOptions);
+            } else {
+                setTimeout(initializeOptions, 0);
             }
         </script>
         """
@@ -376,38 +471,46 @@ def create_exam_note_type(correct_options, incorrect_options):
         # Add CSS
         m['css'] = """
         .card {
-            font-family: arial;
-            font-size: 20px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
             text-align: left;
             color: white;
             background-color: #2f2f2f;
-            padding: 20px;
-            max-width: 800px;
+            padding: 30px;
+            max-width: 900px;
             margin: 0 auto;
         }
 
         .question {
-            margin-bottom: 20px;
+            margin-bottom: 30px;
             font-weight: bold;
-            font-size: 1.2em;
+            font-size: 1.3em;
             color: white;
+            line-height: 1.5;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
         }
 
         .option {
-            margin: 10px 0;
-            padding: 10px;
+            margin: 15px 0;
+            padding: 15px 20px;
             border: 1px solid #ccc;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             transition: all 0.3s ease;
             background-color: #3f3f3f;
             color: white;
+            line-height: 1.6;
         }
 
         .option:hover {
             background-color: #4f4f4f;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
 
         .option.selected {
@@ -416,14 +519,20 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .submit-button {
-            margin-top: 20px;
-            padding: 10px 20px;
+            margin-top: 30px;
+            padding: 12px 25px;
             background-color: #2196f3;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .submit-button:hover:not(:disabled) {
+            background-color: #1976d2;
+            transform: translateY(-2px);
         }
 
         .submit-button:disabled {
@@ -432,12 +541,13 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .explanation-container {
-            margin: 15px 0;
-            padding: 15px;
-            border-radius: 5px;
+            margin: 25px 0;
+            padding: 20px;
+            border-radius: 8px;
             background-color: #3f3f3f;
             color: white;
             border: 2px solid transparent;
+            line-height: 1.6;
         }
 
         .correct-answer {
@@ -452,10 +562,11 @@ def create_exam_note_type(correct_options, incorrect_options):
 
         .option-header {
             font-weight: bold;
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 5px;
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            border-radius: 8px;
             background-color: rgba(255, 255, 255, 0.1);
+            font-size: 1.1em;
         }
 
         .option-header.was-selected {
@@ -463,28 +574,36 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .explanation {
-            padding: 15px;
-            margin-top: 10px;
+            padding: 20px;
+            margin: 15px 0;
             background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 5px;
+            border-radius: 8px;
             color: #fff;
-            line-height: 1.5;
+            line-height: 1.7;
+            font-size: 1em;
+        }
+
+        .explanation b {
+            color: #90caf9;
+            display: block;
+            margin: 15px 0 8px 0;
+            font-size: 1.1em;
         }
 
         hr {
-            margin: 20px 0;
+            margin: 30px 0;
             border: none;
             border-top: 2px solid #666;
         }
 
-        /* Code example styling with Prism.js compatibility */
+        /* Code example styling */
         .code-example {
-            margin: 10px 0;
-            padding: 15px;
+            margin: 20px 0;
+            padding: 20px;
             background-color: #282C34;
-            border-radius: 5px;
+            border-radius: 8px;
             overflow-x: auto;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
 
         .code-example pre {
@@ -495,85 +614,12 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .code-example code {
-            font-family: 'Fira Code', 'Consolas', monospace;
+            font-family: 'Consolas', 'Monaco', monospace;
             font-size: 14px;
             line-height: 1.6;
             background: transparent;
             white-space: pre-wrap !important;
             color: #ABB2BF;
-        }
-
-        /* Syntax highlighting colors */
-        .token.comment,
-        .token.prolog,
-        .token.doctype,
-        .token.cdata {
-            color: #5C6370 !important;
-            font-style: italic !important;
-        }
-
-        .token.function {
-            color: #61AFEF !important;
-        }
-
-        .token.class-name {
-            color: #E5C07B !important;
-        }
-
-        .token.keyword {
-            color: #C678DD !important;
-        }
-
-        .token.boolean,
-        .token.number {
-            color: #D19A66 !important;
-        }
-
-        .token.string {
-            color: #98C379 !important;
-        }
-
-        .token.operator {
-            color: #56B6C2 !important;
-            background: none !important;
-        }
-
-        .token.punctuation {
-            color: #ABB2BF !important;
-        }
-
-        .token.property {
-            color: #E06C75 !important;
-        }
-
-        .token.tag {
-            color: #E06C75 !important;
-        }
-
-        .token.attr-name {
-            color: #D19A66 !important;
-        }
-
-        .token.attr-value {
-            color: #98C379 !important;
-        }
-
-        /* Override Prism.js styles */
-        code[class*="language-"],
-        pre[class*="language-"] {
-            color: #ABB2BF;
-            background: transparent;
-            text-shadow: none;
-            font-family: 'Fira Code', 'Consolas', monospace;
-            font-size: 14px;
-            text-align: left;
-            white-space: pre-wrap;
-            word-spacing: normal;
-            word-break: normal;
-            word-wrap: break-word;
-            line-height: 1.6;
-            tab-size: 4;
-            hyphens: none;
         }
 
         .selected-correct {
@@ -587,8 +633,18 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .option-radio {
-            margin-right: 10px;
+            margin: 3px 15px 0 0;
+            transform: scale(1.2);
         }
+
+        /* Language-specific syntax highlighting */
+        .language-csharp .keyword { color: #569CD6; }
+        .language-csharp .string { color: #CE9178; }
+        .language-csharp .function { color: #DCDCAA; }
+        .language-csharp .class-name { color: #4EC9B0; }
+        .language-csharp .comment { color: #6A9955; }
+        .language-csharp .number { color: #B5CEA8; }
+        .language-csharp .operator { color: #D4D4D4; }
         """
 
         # Add template to model
