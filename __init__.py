@@ -18,7 +18,7 @@ def convert_markdown_to_html(text):
     # Convert code blocks to match Anki's styling
     html = re.sub(
         r'<pre><code>(.*?)</code></pre>',
-        lambda m: f'<div class="code-example"><pre><code class="language-csharp">{m.group(1)}</code></pre></div>',
+        lambda m: f'<div class="code-example"><pre><code>{m.group(1)}</code></pre></div>',
         html,
         flags=re.DOTALL
     )
@@ -48,38 +48,56 @@ class ExamInputDialog(QDialog):
         
         # Input area
         self.input_text = QPlainTextEdit()
-        self.input_text.setPlaceholderText("""Convert the following C# Doc
-___
-
-to this outline
-___
-......
-##### Question 
+        self.input_text.setPlaceholderText("""#### Question 
 [Insert question text here]
 ___
-##### Correct Option
+#### Correct Option
 [Insert option text (70-90 words) here]
 
 ##### Explanation
 [Insert detailed explanation of this option]
 ##### Code Example
-```csharp
-
+```
 [Insert code example here]
-
 ```
 ___
-##### Incorrect Option
+#### Incorrect Option
 [Insert option text (70-90 words) here]
 
 ##### Incorrect Option Explanation
-**What reasoning lead to this incorrect answer:** [Insert a reason why this option might seem correct]
-**Why the reasoning is wrong**: [Insert why reasoning is incorrect and correct it]
+###### What reasoning lead to this incorrect answer
+[Insert a reason why this option might seem correct compared to the actual correct option and make sure it is an actual reasonable reason to think this was the correct option]
+
+###### Why the reasoning is wrong
+[Insert why reasoning is incorrect and correct it]
 ##### Code Example
-```csharp
-
+```
 [Insert code example here]
+```
+___
+#### Incorrect Option
+[Insert option text (70-90 words) here]
+##### Incorrect Option Explanation
+###### What reasoning lead to this incorrect answer
+[Insert a reason why this option might seem correct compared to the actual correct option and make sure it is an actual reasonable reason to think this was the correct option]
+###### Why the reasoning is wrong
+[Insert why reasoning is incorrect and correct it]
+##### Code Example
+```
+[Insert code example here]
+```
+___
+#### Incorrect Option
+[Insert option text (70-90 words) here]
+##### Incorrect Option Explanation
+###### Why reasoning lead to this incorrect answer
+[Insert a reason why this option might seem correct compared to the actual correct option and make sure it is an actual reasonable reason to think this was the correct option]
 
+###### Why the reasoning is wrong
+[Insert why reasoning is incorrect and correct it]
+##### Code Example
+```
+[Insert code example here]
 ```
 ___""")
         self.input_text.setMinimumHeight(400)
@@ -125,36 +143,55 @@ ___""")
         # Parse sections using regex
         sections = {}
         
-        # Skip the initial "Convert the following..." part
-        text = text.split("___\n......\n", 1)[-1]
-        
         # Extract question
-        question_match = re.search(r'##### Question\s*\n(.*?)(?=\n___|\Z)', text, re.DOTALL)
+        question_match = re.search(r'#### Question\s*\n(.*?)(?=\n___|\Z)', text, re.DOTALL)
         if question_match:
             sections['question'] = question_match.group(1).strip()
+        
+        # Initialize correct options list
+        sections['correct_options'] = []
+        
+        # Find all correct options sections
+        correct_sections = re.finditer(
+            r'#### Correct Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text with optional letter prefix
+            r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n---|\n___|\Z)\s*' +  # Explanation
+            r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```\s*(?=\n---|\n___|\Z))?',  # Optional code example
+            text, re.DOTALL
+        )
+        
+        for match in correct_sections:
+            option_text = match.group(1).strip()
+            explanation = match.group(2).strip()
+            code = match.group(3).strip() if match.group(3) else ""
             
-        # Extract correct option
-        correct_match = re.search(r'##### Correct Option\s*\n(.*?)(?=\n##### Explanation|\n___|\Z)', text, re.DOTALL)
-        if correct_match:
-            sections['correct_option'] = correct_match.group(1).strip()
-            
-        # Extract correct explanation
-        correct_exp_match = re.search(r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)', text, re.DOTALL)
-        if correct_exp_match:
-            sections['correct_explanation'] = correct_exp_match.group(1).strip()
-            
-        # Extract correct code example
-        correct_code_match = re.search(r'##### Code Example\s*\n```csharp\s*\n(.*?)```', text, re.DOTALL)
-        if correct_code_match:
-            sections['correct_code'] = correct_code_match.group(1).strip()
-            
-        # Extract incorrect options with a more robust pattern
+            sections['correct_options'].append({
+                'option': option_text,
+                'explanation': explanation,
+                'code': code
+            })
+        
+        # If no correct options found with new format, try old format
+        if not sections['correct_options']:
+            old_format_match = re.search(
+                r'#### Correct Option\s*\n(.*?)\n\n?' +
+                r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)\s*' +
+                r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```)?',
+                text, re.DOTALL
+            )
+            if old_format_match:
+                sections['correct_options'].append({
+                    'option': old_format_match.group(1).strip(),
+                    'explanation': old_format_match.group(2).strip(),
+                    'code': old_format_match.group(3).strip() if old_format_match.group(3) else ""
+                })
+        
+        # Extract incorrect options with updated pattern for optional code blocks
         incorrect_sections = re.finditer(
-            r'##### Incorrect Option\s*\n(.*?)\n\n' + 
-            r'##### Incorrect Option Explanation\s*\n' + 
-            r'\*\*What (?:reasoning lead|reasoning lead|Why reasoning lead) to this incorrect answer:\*\* (.*?)\n' +
-            r'\*\*Why the reasoning is wrong\*\*: (.*?)\n' +
-            r'##### Code Example\s*\n```csharp\s*\n(.*?)```',
+            r'#### Incorrect Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text with optional letter prefix
+            r'##### Incorrect Option Explanation\s*\n' +  # Explanation header
+            r'###### (?:What|Why) reasoning lead(?:s|ed)? to this incorrect answer\s*\n(.*?)\n\n?' +  # Reasoning
+            r'###### Why the reasoning is wrong(?:\s*\[.*?\])?\s*\n(.*?)' +  # Why wrong
+            r'(?:\n##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```|\n---|\n___|\Z)',  # Optional code example
             text, re.DOTALL
         )
         
@@ -163,7 +200,7 @@ ___""")
             option_text = match.group(1).strip()
             reasoning = match.group(2).strip()
             why_wrong = match.group(3).strip()
-            code = match.group(4).strip()
+            code = match.group(4).strip() if len(match.groups()) > 3 and match.group(4) else ""
             
             explanation = f"<b>What reasoning lead to this incorrect answer:</b> {reasoning}<br><br>" + \
                          f"<b>Why the reasoning is wrong</b>: {why_wrong}"
@@ -174,42 +211,6 @@ ___""")
                 'code': code
             })
 
-        # Validate that we have the expected number of incorrect options
-        if len(sections['incorrect_options']) < 3:
-            # Try alternative pattern for the last incorrect option which might have slightly different formatting
-            alt_pattern = (
-                r'##### Incorrect Option\s*\n(.*?)\n\n' + 
-                r'##### Incorrect Option Explanation\s*\n' + 
-                r'\*\*(?:Why|What) (?:reasoning lead|reasoning leads|reasoning led) to this incorrect answer:\*\* (.*?)\n' +
-                r'\*\*Why the reasoning is wrong\*\*: (.*?)\n' +
-                r'##### Code Example\s*\n```csharp\s*\n(.*?)```'
-            )
-            
-            remaining_text = text
-            for existing_option in sections['incorrect_options']:
-                # Remove already found options from the text to avoid duplicates
-                option_text = existing_option['option']
-                remaining_text = remaining_text.split(option_text, 1)[-1]
-            
-            additional_matches = re.finditer(alt_pattern, remaining_text, re.DOTALL)
-            for match in additional_matches:
-                if len(sections['incorrect_options']) >= 3:
-                    break
-                    
-                option_text = match.group(1).strip()
-                reasoning = match.group(2).strip()
-                why_wrong = match.group(3).strip()
-                code = match.group(4).strip()
-                
-                explanation = f"<b>What reasoning lead to this incorrect answer:</b> {reasoning}<br><br>" + \
-                             f"<b>Why the reasoning is wrong</b>: {why_wrong}"
-                
-                sections['incorrect_options'].append({
-                    'option': option_text,
-                    'explanation': explanation,
-                    'code': code
-                })
-            
         return sections
 
     def create_card(self):
@@ -226,7 +227,7 @@ ___""")
             self.save_last_deck()
             
             # Count correct and incorrect options
-            correct_count = 1  # Since we're parsing one correct option
+            correct_count = len(sections['correct_options'])
             incorrect_count = len(sections['incorrect_options'])
             
             # Create note
@@ -240,15 +241,17 @@ ___""")
             
             # Fill note fields with converted HTML
             note['Question'] = convert_markdown_to_html(sections['question'])
-            note['CorrectOption'] = convert_markdown_to_html(sections['correct_option'])
-            note['CorrectExplanation'] = convert_markdown_to_html(sections['correct_explanation'])
             
-            # For code examples, we want to preserve the formatting but ensure proper syntax highlighting
-            note['CorrectCodeExample'] = sections['correct_code']
+            # Add correct options
+            for i, correct in enumerate(sections['correct_options'], 1):
+                suffix = str(i) if correct_count > 1 else ""
+                note[f'CorrectOption{suffix}'] = convert_markdown_to_html(correct['option'])
+                note[f'CorrectExplanation{suffix}'] = convert_markdown_to_html(correct['explanation'])
+                note[f'CorrectCodeExample{suffix}'] = correct['code']
             
+            # Add incorrect options
             for i, incorrect in enumerate(sections['incorrect_options'], 1):
                 note[f'IncorrectOption{i}'] = convert_markdown_to_html(incorrect['option'])
-                # The explanation is already in HTML format with <b> tags
                 note[f'IncorrectExplanation{i}'] = incorrect['explanation']
                 note[f'IncorrectCodeExample{i}'] = incorrect['code']
             
@@ -317,7 +320,7 @@ def create_exam_note_type(correct_options, incorrect_options):
         <button onclick="submitAnswer()" id="submit-btn" class="submit-button">Submit</button>
 
         <script>
-            var selectedOption = null;
+            var selectedOptions = new Set();
             var submitted = false;
             var originalToShuffled = {};
             var shuffledToOriginal = {};
@@ -333,7 +336,7 @@ def create_exam_note_type(correct_options, incorrect_options):
             function createOption(index, content) {
                 return `
                     <div class="option" onclick="selectOption(${index})" id="option${index}" data-index="${index}">
-                        <input type="radio" name="option" id="radio${index}" class="option-radio">
+                        <input type="checkbox" name="option" id="checkbox${index}" class="option-checkbox">
                         <label>${content}</label>
                     </div>
                 `;
@@ -341,12 +344,14 @@ def create_exam_note_type(correct_options, incorrect_options):
 
             function initializeOptions() {
                 try {
-                    const options = [
-                        { content: `{{CorrectOption}}`, isCorrect: true },
-                        """ + ",\n".join([f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, isCorrect: false }}" for i in range(incorrect_options)]) + """
+                    const options = [""" + \
+                    ",\n".join([f"{{ content: `{{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}`, isCorrect: true }}" for i in range(correct_options)]) + \
+                    ",\n" + \
+                    ",\n".join([f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, isCorrect: false }}" for i in range(incorrect_options)]) + \
+                    """
                     ];
 
-                    const shuffledIndices = shuffleArray([""" + ", ".join(map(str, range(incorrect_options + 1))) + """]);
+                    const shuffledIndices = shuffleArray([""" + ", ".join(map(str, range(correct_options + incorrect_options))) + """]);
                     
                     const optionsContainer = document.getElementById('options');
                     if (!optionsContainer) {
@@ -378,25 +383,26 @@ def create_exam_note_type(correct_options, incorrect_options):
             function selectOption(index) {
                 if (submitted) return;
                 
-                selectedOption = index;
-                document.querySelectorAll('.option').forEach(opt => {
-                    opt.classList.remove('selected');
-                    opt.querySelector('input[type="radio"]').checked = false;
-                });
+                const checkbox = document.getElementById('checkbox' + index);
+                const optionDiv = document.getElementById('option' + index);
                 
-                const selectedDiv = document.getElementById('option' + index);
-                if (selectedDiv) {
-                    selectedDiv.classList.add('selected');
-                    selectedDiv.querySelector('input[type="radio"]').checked = true;
+                if (selectedOptions.has(index)) {
+                    selectedOptions.delete(index);
+                    optionDiv.classList.remove('selected');
+                    checkbox.checked = false;
+                } else {
+                    selectedOptions.add(index);
+                    optionDiv.classList.add('selected');
+                    checkbox.checked = true;
                 }
             }
 
             function submitAnswer() {
-                if (submitted || selectedOption === null) return;
+                if (submitted || selectedOptions.size === 0) return;
                 submitted = true;
                 
-                const originalSelected = shuffledToOriginal[selectedOption];
-                document.body.setAttribute('data-selected-option', originalSelected);
+                const originalSelected = Array.from(selectedOptions).map(index => shuffledToOriginal[index]);
+                document.body.setAttribute('data-selected-options', JSON.stringify(originalSelected));
                 
                 document.getElementById('submit-btn').disabled = true;
                 pycmd('ans');
@@ -419,20 +425,21 @@ def create_exam_note_type(correct_options, incorrect_options):
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js" data-manual></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-csharp.min.js"></script>
         <div class="answer">
+            """ + "\n".join([f"""
             <div class="explanation-container correct-answer">
-                <div class="option-header">Correct Answer: {{CorrectOption}}</div>
-                <div class="explanation">{{CorrectExplanation}}</div>
+                <div class="option-header">Correct Answer: {{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}</div>
+                <div class="explanation">{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}</div>
                 <div class="code-example">
-                    <pre><code class="language-csharp">{{CorrectCodeExample}}</code></pre>
+                    <pre><code>{{{{CorrectCodeExample{str(i + 1) if correct_options > 1 else ''}}}}}</code></pre>
                 </div>
-            </div>
+            </div>""" for i in range(correct_options)]) + """
 
             """ + "\n".join([f"""
             <div class="explanation-container incorrect-answer">
                 <div class="option-header">{{{{IncorrectOption{i + 1}}}}}</div>
                 <div class="explanation">{{{{IncorrectExplanation{i + 1}}}}}</div>
                 <div class="code-example">
-                    <pre><code class="language-csharp">{{{{IncorrectCodeExample{i + 1}}}}}</code></pre>
+                    <pre><code>{{{{IncorrectCodeExample{i + 1}}}}}</code></pre>
                 </div>
             </div>""" for i in range(incorrect_options)]) + """
 
@@ -445,14 +452,17 @@ def create_exam_note_type(correct_options, incorrect_options):
             });
 
             function highlightSelection() {
-                var selectedOption = parseInt(document.body.getAttribute('data-selected-option'));
+                var selectedOptionsStr = document.body.getAttribute('data-selected-options');
+                var selectedOptions = JSON.parse(selectedOptionsStr);
                 var containers = document.querySelectorAll('.explanation-container');
                 
-                if (selectedOption === 0) {
-                    containers[0].classList.add('selected-correct');
-                } else {
-                    containers[selectedOption].classList.add('selected-incorrect');
-                }
+                selectedOptions.forEach(selectedOption => {
+                    if (selectedOption < """ + str(correct_options) + """) {
+                        containers[selectedOption].classList.add('selected-correct');
+                    } else {
+                        containers[selectedOption].classList.add('selected-incorrect');
+                    }
+                });
                 
                 // Initialize Prism.js highlighting for all code blocks
                 document.querySelectorAll('code').forEach(function(code) {
@@ -632,7 +642,7 @@ def create_exam_note_type(correct_options, incorrect_options):
             background-color: #b71c1c !important;
         }
 
-        .option-radio {
+        .option-checkbox {
             margin: 3px 15px 0 0;
             transform: scale(1.2);
         }
@@ -658,7 +668,9 @@ def init():
     # Create exam card types
     create_exam_note_type(1, 3)  # ExamCard13 (1 correct, 3 incorrect options)
     create_exam_note_type(1, 4)  # ExamCard14 (1 correct, 4 incorrect options)
-    create_exam_note_type(1, 5)  # ExamCard14 (1 correct, 4 incorrect options)
+    create_exam_note_type(1, 5)  # ExamCard15 (1 correct, 5 incorrect options)
+    create_exam_note_type(2, 3)  # ExamCard23 (2 correct, 3 incorrect options)
+    create_exam_note_type(3, 2)  # ExamCard32 (3 correct, 2 incorrect options)
 
 # Add the init hook
 gui_hooks.profile_did_open.append(init) 
