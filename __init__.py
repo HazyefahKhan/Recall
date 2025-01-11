@@ -610,7 +610,7 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .explanation b {
-            color: #90caf9;
+            color: #fff;
             display: block;
             margin: 15px 0 8px 0;
             font-size: 1.1em;
