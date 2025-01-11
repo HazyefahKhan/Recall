@@ -15,15 +15,39 @@ def convert_markdown_to_html(text):
     # Remove paragraph tags around the text (Anki adds its own)
     html = re.sub(r'^\s*<p>(.*?)</p>\s*$', r'\1', html, flags=re.DOTALL)
     
-    # Convert code blocks to match Anki's styling
+    # Convert code blocks to match Anki's styling with better formatting
     html = re.sub(
-        r'<pre><code>(.*?)</code></pre>',
-        lambda m: f'<div class="code-example"><pre><code>{m.group(1)}</code></pre></div>',
+        r'<pre><code(?:\s+class="([^"]*)")?>([^<]+)</code></pre>',
+        lambda m: format_code_block(m.group(2), m.group(1) if m.groups()[0] else None),
         html,
         flags=re.DOTALL
     )
     
     return html
+
+def format_code_block(code, language=None):
+    """Format a code block with proper styling and line breaks."""
+    # Clean up the code
+    code = code.strip()
+    
+    # Process the code block
+    lines = []
+    for line in code.split('\n'):
+        # Escape HTML special characters
+        line = (line.replace('&', '&amp;')
+                   .replace('<', '&lt;')
+                   .replace('>', '&gt;'))
+        # Add proper indentation
+        line = line.replace(' ', '&nbsp;')
+        lines.append(line)
+    
+    code = '<br>'.join(lines)
+    
+    return f'''
+    <div class="code-block">
+        <pre><code>{code}</code></pre>
+    </div>
+    '''
 
 class ExamInputDialog(QDialog):
     def __init__(self, parent=None):
@@ -151,47 +175,29 @@ ___""")
         # Initialize correct options list
         sections['correct_options'] = []
         
-        # Find all correct options sections with flexible backtick count
+        # Find all correct options sections
         correct_sections = re.finditer(
-            r'#### Correct Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text with optional letter prefix
-            r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n---|\n___|\Z)\s*' +  # Explanation
-            r'(?:##### Code Example\s*\n```{3,4}(?:\w+)?\s*\n(.*?)```{3,4}\s*(?=\n---|\n___|\Z))?',  # Optional code example
+            r'#### Correct Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text
+            r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)\s*' +  # Explanation
+            r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```\s*(?=\n___|\Z))?',  # Optional code example
             text, re.DOTALL
         )
         
         for match in correct_sections:
-            option_text = match.group(1).strip()
-            explanation = match.group(2).strip()
-            code = match.group(3).strip() if match.group(3) else ""
-            
             sections['correct_options'].append({
-                'option': option_text,
-                'explanation': explanation,
-                'code': code
+                'option': match.group(1).strip(),
+                'explanation': match.group(2).strip(),
+                'code': match.group(3).strip() if match.group(3) else ""
             })
         
-        # If no correct options found with new format, try old format with flexible backticks
-        if not sections['correct_options']:
-            old_format_match = re.search(
-                r'#### Correct Option\s*\n(.*?)\n\n?' +
-                r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)\s*' +
-                r'(?:##### Code Example\s*\n```{3,4}(?:\w+)?\s*\n(.*?)```{3,4})?',
-                text, re.DOTALL
-            )
-            if old_format_match:
-                sections['correct_options'].append({
-                    'option': old_format_match.group(1).strip(),
-                    'explanation': old_format_match.group(2).strip(),
-                    'code': old_format_match.group(3).strip() if old_format_match.group(3) else ""
-                })
-        
-        # Extract incorrect options with updated pattern for flexible backtick counts
+        # Extract incorrect options with updated pattern
         incorrect_sections = re.finditer(
-            r'#### Incorrect Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text with optional letter prefix
+            r'#### Incorrect Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text
             r'##### Incorrect Option Explanation\s*\n' +  # Explanation header
             r'###### (?:What|Why) reasoning (?:lead(?:s|ed)?|led) to this incorrect answer\s*\n(.*?)\n\n?' +  # Reasoning
-            r'###### Why the reasoning is wrong(?:\s*\[.*?\])?\s*\n(.*?)' +  # Why wrong
-            r'(?:\n##### Code Example\s*\n```{3,4}(?:\w+)?\s*\n(.*?)```{3,4}|\n---|\n___|\Z)',  # Optional code example with flexible backticks
+            r'###### Why the reasoning is wrong\s*\n(.*?)' +  # Why wrong
+            r'(?=\n##### Code Example|\n___|\Z)\s*' +  # Look ahead for code example or section end
+            r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```)?',  # Optional code example
             text, re.DOTALL
         )
         
@@ -200,10 +206,10 @@ ___""")
             option_text = match.group(1).strip()
             reasoning = match.group(2).strip()
             why_wrong = match.group(3).strip()
-            code = match.group(4).strip() if len(match.groups()) > 3 and match.group(4) else ""
+            code = match.group(4).strip() if match.group(4) else ""
             
             explanation = f"<b>What reasoning lead to this incorrect answer:</b> {reasoning}<br><br>" + \
-                         f"<b>Why the reasoning is wrong</b>: {why_wrong}"
+                         f"<b>Why the reasoning is wrong:</b> {why_wrong}"
             
             sections['incorrect_options'].append({
                 'option': option_text,
@@ -619,27 +625,60 @@ def create_exam_note_type(correct_options, incorrect_options):
         /* Code example styling */
         .code-example {
             margin: 20px 0;
-            padding: 20px;
-            background-color: #282C34;
+            padding: 15px;
+            background-color: #1e1e1e;
             border-radius: 8px;
             overflow-x: auto;
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            font-family: 'Consolas', 'Monaco', monospace;
         }
 
         .code-example pre {
             margin: 0;
             padding: 0;
             background: transparent;
-            white-space: pre-wrap !important;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: inherit;
         }
 
         .code-example code {
-            font-family: 'Consolas', 'Monaco', monospace;
+            display: block;
+            font-family: inherit;
             font-size: 14px;
-            line-height: 1.6;
+            line-height: 1.5;
+            color: #d4d4d4;
             background: transparent;
-            white-space: pre-wrap !important;
-            color: #ABB2BF;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        /* Generic syntax highlighting */
+        .code-example .comment { color: #6A9955; }
+        .code-example .command { color: #569cd6; }
+        .code-example .output { color: #b5cea8; }
+        .code-example .string { color: #ce9178; }
+        .code-example .keyword { color: #569cd6; }
+        .code-example .function { color: #dcdcaa; }
+        .code-example .number { color: #b5cea8; }
+        .code-example .operator { color: #d4d4d4; }
+
+        /* Language-specific styles */
+        .code-example code.language-python { color: #d4d4d4; }
+        .code-example code.language-bash { color: #d4d4d4; }
+        .code-example code.language-json { color: #d4d4d4; }
+        .code-example code.language-yaml { color: #d4d4d4; }
+        .code-example code.language-typescript { color: #d4d4d4; }
+        .code-example code.language-javascript { color: #d4d4d4; }
+
+        /* Make sure code blocks in incorrect answers maintain styling */
+        .incorrect-answer .code-example {
+            background-color: #1e1e1e !important;
+            border: 1px solid #444;
+        }
+
+        .incorrect-answer .code-example code {
+            color: #d4d4d4;
         }
 
         .selected-correct {
@@ -674,6 +713,48 @@ def create_exam_note_type(correct_options, incorrect_options):
         .option-header.was-selected {
             background-color: #1a237e !important;
             color: white;
+        }
+
+        .code-block {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 15px;
+            overflow-x: auto;
+        }
+        
+        .code-block pre {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+        
+        .code-block code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #d4d4d4;
+            display: block;
+            white-space: pre;
+        }
+        
+        /* Make sure code blocks in incorrect answers maintain styling */
+        .incorrect-answer .code-block {
+            background-color: #1e1e1e !important;
+            border: 1px solid #444;
+        }
+        
+        .incorrect-answer .code-block code {
+            color: #d4d4d4;
+        }
+        
+        /* Ensure proper spacing in explanations */
+        .explanation {
+            margin: 15px 0;
+        }
+        
+        .explanation-container {
+            margin: 20px 0;
         }
         """
 
