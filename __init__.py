@@ -151,11 +151,11 @@ ___""")
         # Initialize correct options list
         sections['correct_options'] = []
         
-        # Find all correct options sections
+        # Find all correct options sections with flexible backtick count
         correct_sections = re.finditer(
             r'#### Correct Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text with optional letter prefix
             r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n---|\n___|\Z)\s*' +  # Explanation
-            r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```\s*(?=\n---|\n___|\Z))?',  # Optional code example
+            r'(?:##### Code Example\s*\n```{3,4}(?:\w+)?\s*\n(.*?)```{3,4}\s*(?=\n---|\n___|\Z))?',  # Optional code example
             text, re.DOTALL
         )
         
@@ -170,12 +170,12 @@ ___""")
                 'code': code
             })
         
-        # If no correct options found with new format, try old format
+        # If no correct options found with new format, try old format with flexible backticks
         if not sections['correct_options']:
             old_format_match = re.search(
                 r'#### Correct Option\s*\n(.*?)\n\n?' +
                 r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)\s*' +
-                r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```)?',
+                r'(?:##### Code Example\s*\n```{3,4}(?:\w+)?\s*\n(.*?)```{3,4})?',
                 text, re.DOTALL
             )
             if old_format_match:
@@ -185,13 +185,13 @@ ___""")
                     'code': old_format_match.group(3).strip() if old_format_match.group(3) else ""
                 })
         
-        # Extract incorrect options with updated pattern for optional code blocks
+        # Extract incorrect options with updated pattern for flexible backtick counts
         incorrect_sections = re.finditer(
             r'#### Incorrect Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text with optional letter prefix
             r'##### Incorrect Option Explanation\s*\n' +  # Explanation header
-            r'###### (?:What|Why) reasoning lead(?:s|ed)? to this incorrect answer\s*\n(.*?)\n\n?' +  # Reasoning
+            r'###### (?:What|Why) reasoning (?:lead(?:s|ed)?|led) to this incorrect answer\s*\n(.*?)\n\n?' +  # Reasoning
             r'###### Why the reasoning is wrong(?:\s*\[.*?\])?\s*\n(.*?)' +  # Why wrong
-            r'(?:\n##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```|\n---|\n___|\Z)',  # Optional code example
+            r'(?:\n##### Code Example\s*\n```{3,4}(?:\w+)?\s*\n(.*?)```{3,4}|\n---|\n___|\Z)',  # Optional code example with flexible backticks
             text, re.DOTALL
         )
         
@@ -426,7 +426,7 @@ def create_exam_note_type(correct_options, incorrect_options):
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-csharp.min.js"></script>
         <div class="answer">
             """ + "\n".join([f"""
-            <div class="explanation-container correct-answer">
+            <div class="explanation-container correct-answer" data-option-index="{i}">
                 <div class="option-header">Correct Answer: {{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}</div>
                 <div class="explanation">{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}</div>
                 <div class="code-example">
@@ -435,7 +435,7 @@ def create_exam_note_type(correct_options, incorrect_options):
             </div>""" for i in range(correct_options)]) + """
 
             """ + "\n".join([f"""
-            <div class="explanation-container incorrect-answer">
+            <div class="explanation-container incorrect-answer" data-option-index="{correct_options + i}">
                 <div class="option-header">{{{{IncorrectOption{i + 1}}}}}</div>
                 <div class="explanation">{{{{IncorrectExplanation{i + 1}}}}}</div>
                 <div class="code-example">
@@ -452,22 +452,32 @@ def create_exam_note_type(correct_options, incorrect_options):
             });
 
             function highlightSelection() {
-                var selectedOptionsStr = document.body.getAttribute('data-selected-options');
-                var selectedOptions = JSON.parse(selectedOptionsStr);
-                var containers = document.querySelectorAll('.explanation-container');
-                
-                selectedOptions.forEach(selectedOption => {
-                    if (selectedOption < """ + str(correct_options) + """) {
-                        containers[selectedOption].classList.add('selected-correct');
-                    } else {
-                        containers[selectedOption].classList.add('selected-incorrect');
-                    }
-                });
-                
-                // Initialize Prism.js highlighting for all code blocks
-                document.querySelectorAll('code').forEach(function(code) {
-                    Prism.highlightElement(code);
-                });
+                try {
+                    var selectedOptionsStr = document.body.getAttribute('data-selected-options');
+                    if (!selectedOptionsStr) return;
+                    
+                    var selectedOptions = JSON.parse(selectedOptionsStr);
+                    var containers = document.querySelectorAll('.explanation-container');
+                    
+                    // Add was-selected class to option headers for selected options
+                    containers.forEach(container => {
+                        const optionIndex = parseInt(container.getAttribute('data-option-index'));
+                        if (selectedOptions.includes(optionIndex)) {
+                            container.classList.add('was-selected');
+                            const header = container.querySelector('.option-header');
+                            if (header) {
+                                header.classList.add('was-selected');
+                            }
+                        }
+                    });
+                    
+                    // Initialize Prism.js highlighting for all code blocks
+                    document.querySelectorAll('code').forEach(function(code) {
+                        Prism.highlightElement(code);
+                    });
+                } catch (error) {
+                    console.error('Error in highlightSelection:', error);
+                }
             }
 
             if (document.readyState === 'loading') {
@@ -655,6 +665,16 @@ def create_exam_note_type(correct_options, incorrect_options):
         .language-csharp .comment { color: #6A9955; }
         .language-csharp .number { color: #B5CEA8; }
         .language-csharp .operator { color: #D4D4D4; }
+
+        .explanation-container.was-selected {
+            border: 3px solid #1a237e !important;
+            box-shadow: 0 0 10px rgba(26, 35, 126, 0.5);
+        }
+
+        .option-header.was-selected {
+            background-color: #1a237e !important;
+            color: white;
+        }
         """
 
         # Add template to model
