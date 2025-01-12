@@ -17,8 +17,8 @@ def convert_markdown_to_html(text):
     
     # Convert code blocks to match Anki's styling with better formatting
     html = re.sub(
-        r'<pre><code(?:\s+class="([^"]*)")?>([^<]+)</code></pre>',
-        lambda m: format_code_block(m.group(2), m.group(1) if m.groups()[0] else None),
+        r'```(\w*)\s*(.*?)```',  # Modified to capture language and handle multiline
+        lambda m: format_code_block(m.group(2), m.group(1) if m.group(1) else None),
         html,
         flags=re.DOTALL
     )
@@ -43,9 +43,11 @@ def format_code_block(code, language=None):
     
     code = '<br>'.join(lines)
     
+    # Only add language class if a valid language is specified
+    lang_class = f" class=\"language-{language}\"" if language and language.strip() else ""
     return f'''
     <div class="code-block">
-        <pre><code>{code}</code></pre>
+        <pre><code{lang_class}>{code}</code></pre>
     </div>
     '''
 
@@ -433,7 +435,7 @@ def create_exam_note_type(correct_options, incorrect_options):
         <div class="answer">
             """ + "\n".join([f"""
             <div class="explanation-container correct-answer" data-option-index="{i}">
-                <div class="option-header">Correct Answer: {{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}</div>
+                <div class="option-header">{{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}</div>
                 <div class="explanation">{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}</div>
                 <div class="code-example">
                     <pre><code>{{{{CorrectCodeExample{str(i + 1) if correct_options > 1 else ''}}}}}</code></pre>
