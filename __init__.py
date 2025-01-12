@@ -432,65 +432,96 @@ def create_exam_note_type(correct_options, incorrect_options):
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js" data-manual></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-csharp.min.js"></script>
-        <div class="answer">
-            """ + "\n".join([f"""
-            <div class="explanation-container correct-answer" data-option-index="{i}">
-                <div class="option-header">{{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}</div>
-                <div class="explanation">{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}</div>
-                <div class="code-example">
-                    <pre><code>{{{{CorrectCodeExample{str(i + 1) if correct_options > 1 else ''}}}}}</code></pre>
-                </div>
-            </div>""" for i in range(correct_options)]) + """
-
-            """ + "\n".join([f"""
-            <div class="explanation-container incorrect-answer" data-option-index="{correct_options + i}">
-                <div class="option-header">{{{{IncorrectOption{i + 1}}}}}</div>
-                <div class="explanation">{{{{IncorrectExplanation{i + 1}}}}}</div>
-                <div class="code-example">
-                    <pre><code>{{{{IncorrectCodeExample{i + 1}}}}}</code></pre>
-                </div>
-            </div>""" for i in range(incorrect_options)]) + """
-
-        </div>
+        
+        <!-- This container will hold all explanation entries in the randomized order -->
+        <div class="answer" id="answers"></div>
 
         <script>
-            // Fix for line breaks in Prism
-            Prism.hooks.add("before-highlight", function (env) {
-                env.code = env.element.innerText;
-            });
+            // Build an array of all items in the same order they were added on the front side:
+            var allItems = [
+                """ + ",\n".join([
+                    f"{{ content: `{{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}`, explanation: `{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}`, code: `{{{{CorrectCodeExample{str(i + 1) if correct_options > 1 else ''}}}}}`, isCorrect: true }}"
+                    for i in range(correct_options)
+                ]) + (
+                    ",\n" if correct_options and incorrect_options else ""
+                ) + ",\n".join([
+                    f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, explanation: `{{{{IncorrectExplanation{i + 1}}}}}`, code: `{{{{IncorrectCodeExample{i + 1}}}}}`, isCorrect: false }}"
+                    for i in range(incorrect_options)
+                ]) + """
+            ];
 
+            function buildAnswerContainers() {
+                try {
+                    var mappingStr = document.body.getAttribute('data-option-mapping');
+                    if (!mappingStr) return; // No mapping found
+                    var mapping = JSON.parse(mappingStr);
+                    var stO = mapping.shuffledToOriginal; // Maps displayedIndex -> originalIndex
+                    var answersDiv = document.getElementById('answers');
+                    if (!answersDiv) return;
+                    
+                    // Clear existing content
+                    answersDiv.innerHTML = '';
+
+                    // Build explanation containers in the same order as displayed on the front
+                    for (var newIndex = 0; newIndex < allItems.length; newIndex++) {
+                        var originalIndex = stO[newIndex];
+                        var item = allItems[originalIndex];
+                        // Create container
+                        var container = document.createElement('div');
+                        container.className = 'explanation-container ' + 
+                            (item.isCorrect ? 'correct-answer' : 'incorrect-answer');
+                        container.setAttribute('data-option-index', originalIndex);
+                        
+                        container.innerHTML = `
+                            <div class="option-header">${item.content}</div>
+                            <div class="explanation">${item.explanation}</div>
+                            <div class="code-example">
+                                <pre><code>${item.code}</code></pre>
+                            </div>
+                        `;
+                        answersDiv.appendChild(container);
+                    }
+                } catch (err) {
+                    console.error('Error building answer containers:', err);
+                }
+            }
+
+            // Prism and highlightSelection logic is kept, but updated to highlight the newly added containers
             function highlightSelection() {
                 try {
                     var selectedOptionsStr = document.body.getAttribute('data-selected-options');
                     if (!selectedOptionsStr) return;
-                    
+
                     var selectedOptions = JSON.parse(selectedOptionsStr);
                     var containers = document.querySelectorAll('.explanation-container');
                     
-                    // Add was-selected class to option headers for selected options
+                    // Mark any options that were selected
                     containers.forEach(container => {
                         const optionIndex = parseInt(container.getAttribute('data-option-index'));
                         if (selectedOptions.includes(optionIndex)) {
                             container.classList.add('was-selected');
                             const header = container.querySelector('.option-header');
-                            if (header) {
-                                header.classList.add('was-selected');
-                            }
+                            if (header) header.classList.add('was-selected');
                         }
                     });
-                    
-                    // Initialize Prism.js highlighting for all code blocks
-                    document.querySelectorAll('code').forEach(function(code) {
-                        Prism.highlightElement(code);
+
+                    // Highlight code blocks with Prism
+                    document.querySelectorAll('code').forEach(function(codeBlock) {
+                        Prism.highlightElement(codeBlock);
                     });
                 } catch (error) {
                     console.error('Error in highlightSelection:', error);
                 }
             }
 
+            // Build explanations and then highlight
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', highlightSelection);
+                document.addEventListener('DOMContentLoaded', () => {
+                    buildAnswerContainers();
+                    highlightSelection();
+                });
             } else {
+                buildAnswerContainers();
                 highlightSelection();
             }
         </script>
