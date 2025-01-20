@@ -78,53 +78,18 @@ class ExamInputDialog(QDialog):
 [Insert question text here]
 ___
 #### Correct Option
-[Insert option text (70-90 words) here]
+[Insert option text here] 
 
-##### Explanation
-[Insert detailed explanation of this option]
-##### Code Example
-```
-[Insert code example here]
-```
+##### Step by Step Explanation
+[Insert detailed step by step explanation of this option including any code examples/diagrams/tables if applicable]
+
 ___
 #### Incorrect Option
-[Insert option text (70-90 words) here]
+[Insert option text here including] 
 
-##### Incorrect Option Explanation
-###### What reasoning lead to this incorrect answer
-[Insert a reason why this option might seem correct compared to the actual correct option and make sure it is an actual reasonable reason to think this was the correct option]
+##### Step by Step Explanation on what went wrong
+[Insert detailed step by step explanation of what reasoning lead someone to choose this incorrect option including any code examples/diagrams/tables if applicable]
 
-###### Why the reasoning is wrong
-[Insert why reasoning is incorrect and correct it]
-##### Code Example
-```
-[Insert code example here]
-```
-___
-#### Incorrect Option
-[Insert option text (70-90 words) here]
-##### Incorrect Option Explanation
-###### What reasoning lead to this incorrect answer
-[Insert a reason why this option might seem correct compared to the actual correct option and make sure it is an actual reasonable reason to think this was the correct option]
-###### Why the reasoning is wrong
-[Insert why reasoning is incorrect and correct it]
-##### Code Example
-```
-[Insert code example here]
-```
-___
-#### Incorrect Option
-[Insert option text (70-90 words) here]
-##### Incorrect Option Explanation
-###### Why reasoning lead to this incorrect answer
-[Insert a reason why this option might seem correct compared to the actual correct option and make sure it is an actual reasonable reason to think this was the correct option]
-
-###### Why the reasoning is wrong
-[Insert why reasoning is incorrect and correct it]
-##### Code Example
-```
-[Insert code example here]
-```
 ___""")
         self.input_text.setMinimumHeight(400)
         layout.addWidget(self.input_text)
@@ -177,46 +142,31 @@ ___""")
         # Initialize correct options list
         sections['correct_options'] = []
         
-        # Find all correct options sections
+        # Find all correct options sections with new format
         correct_sections = re.finditer(
-            r'#### Correct Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Explanation\s*\n(.*?)(?=\n##### Code Example|\n___|\Z)\s*' +  # Explanation
-            r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```\s*(?=\n___|\Z))?',  # Optional code example
+            r'#### Correct Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
+            r'##### Step by Step Explanation\s*\n(.*?)(?=\n___|\Z)',  # Step by step explanation
             text, re.DOTALL
         )
         
         for match in correct_sections:
             sections['correct_options'].append({
                 'option': match.group(1).strip(),
-                'explanation': match.group(2).strip(),
-                'code': match.group(3).strip() if match.group(3) else ""
+                'explanation': match.group(2).strip()
             })
         
-        # Extract incorrect options with updated pattern
+        # Extract incorrect options with new format
         incorrect_sections = re.finditer(
-            r'#### Incorrect Option:?\s*(?:[A-Z]\.\s*)?([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Incorrect Option Explanation\s*\n' +  # Explanation header
-            r'###### (?:What|Why) reasoning (?:lead(?:s|ed)?|led) to this incorrect answer\s*\n(.*?)\n\n?' +  # Reasoning
-            r'###### Why the reasoning is wrong\s*\n(.*?)' +  # Why wrong
-            r'(?=\n##### Code Example|\n___|\Z)\s*' +  # Look ahead for code example or section end
-            r'(?:##### Code Example\s*\n```(?:\w+)?\s*\n(.*?)```)?',  # Optional code example
+            r'#### Incorrect Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
+            r'##### Step by Step Explanation on what went wrong\s*\n(.*?)(?=\n___|\Z)',  # Step by step explanation
             text, re.DOTALL
         )
         
         sections['incorrect_options'] = []
         for match in incorrect_sections:
-            option_text = match.group(1).strip()
-            reasoning = match.group(2).strip()
-            why_wrong = match.group(3).strip()
-            code = match.group(4).strip() if match.group(4) else ""
-            
-            explanation = f"<b>What reasoning lead to this incorrect answer:</b> {reasoning}<br><br>" + \
-                         f"<b>Why the reasoning is wrong:</b> {why_wrong}"
-            
             sections['incorrect_options'].append({
-                'option': option_text,
-                'explanation': explanation,
-                'code': code
+                'option': match.group(1).strip(),
+                'explanation': match.group(2).strip()
             })
 
         return sections
@@ -255,13 +205,11 @@ ___""")
                 suffix = str(i) if correct_count > 1 else ""
                 note[f'CorrectOption{suffix}'] = convert_markdown_to_html(correct['option'])
                 note[f'CorrectExplanation{suffix}'] = convert_markdown_to_html(correct['explanation'])
-                note[f'CorrectCodeExample{suffix}'] = correct['code']
             
             # Add incorrect options
             for i, incorrect in enumerate(sections['incorrect_options'], 1):
                 note[f'IncorrectOption{i}'] = convert_markdown_to_html(incorrect['option'])
-                note[f'IncorrectExplanation{i}'] = incorrect['explanation']
-                note[f'IncorrectCodeExample{i}'] = incorrect['code']
+                note[f'IncorrectExplanation{i}'] = convert_markdown_to_html(incorrect['explanation'])
             
             # Add note to selected deck
             mw.col.add_note(note, deck_id)
@@ -284,12 +232,7 @@ action.setShortcut(QKeySequence("Ctrl+Shift+E"))  # Add keyboard shortcut
 mw.form.menuTools.addAction(action)
 
 def create_exam_note_type(correct_options, incorrect_options):
-    """Create an exam note type with code examples.
-    
-    Args:
-        correct_options (int): Number of correct options
-        incorrect_options (int): Number of incorrect options
-    """
+    """Create an exam note type with code examples."""
     model_name = f"ExamCard{correct_options}{incorrect_options}"
     if model_name not in mw.col.models.all_names():
         mm = mw.col.models
@@ -303,16 +246,14 @@ def create_exam_note_type(correct_options, incorrect_options):
             suffix = str(i + 1) if correct_options > 1 else ""
             fields.extend([
                 f"CorrectOption{suffix}",
-                f"CorrectExplanation{suffix}",
-                f"CorrectCodeExample{suffix}"
+                f"CorrectExplanation{suffix}"
             ])
         
         # Add incorrect options fields
         for i in range(incorrect_options):
             fields.extend([
                 f"IncorrectOption{i + 1}",
-                f"IncorrectExplanation{i + 1}",
-                f"IncorrectCodeExample{i + 1}"
+                f"IncorrectExplanation{i + 1}"
             ])
         
         for field in fields:
@@ -440,12 +381,12 @@ def create_exam_note_type(correct_options, incorrect_options):
             // Build an array of all items in the same order they were added on the front side:
             var allItems = [
                 """ + ",\n".join([
-                    f"{{ content: `{{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}`, explanation: `{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}`, code: `{{{{CorrectCodeExample{str(i + 1) if correct_options > 1 else ''}}}}}`, isCorrect: true }}"
+                    f"{{ content: `{{{{CorrectOption{str(i + 1) if correct_options > 1 else ''}}}}}`, explanation: `{{{{CorrectExplanation{str(i + 1) if correct_options > 1 else ''}}}}}`, isCorrect: true }}"
                     for i in range(correct_options)
                 ]) + (
                     ",\n" if correct_options and incorrect_options else ""
                 ) + ",\n".join([
-                    f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, explanation: `{{{{IncorrectExplanation{i + 1}}}}}`, code: `{{{{IncorrectCodeExample{i + 1}}}}}`, isCorrect: false }}"
+                    f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, explanation: `{{{{IncorrectExplanation{i + 1}}}}}`, isCorrect: false }}"
                     for i in range(incorrect_options)
                 ]) + """
             ];
@@ -475,9 +416,6 @@ def create_exam_note_type(correct_options, incorrect_options):
                         container.innerHTML = `
                             <div class="option-header">${item.content}</div>
                             <div class="explanation">${item.explanation}</div>
-                            <div class="code-example">
-                                <pre><code>${item.code}</code></pre>
-                            </div>
                         `;
                         answersDiv.appendChild(container);
                     }
@@ -506,8 +444,8 @@ def create_exam_note_type(correct_options, incorrect_options):
                     });
 
                     // Highlight code blocks with Prism
-                    document.querySelectorAll('code').forEach(function(codeBlock) {
-                        Prism.highlightElement(codeBlock);
+                    document.querySelectorAll('pre code').forEach(function(block) {
+                        Prism.highlightElement(block);
                     });
                 } catch (error) {
                     console.error('Error in highlightSelection:', error);
@@ -541,6 +479,7 @@ def create_exam_note_type(correct_options, incorrect_options):
             margin: 0 auto;
         }
 
+        /* Question styling */
         .question {
             margin-bottom: 30px;
             font-weight: bold;
@@ -552,6 +491,7 @@ def create_exam_note_type(correct_options, incorrect_options):
             border-radius: 8px;
         }
 
+        /* Option styling */
         .option {
             margin: 15px 0;
             padding: 15px 20px;
@@ -566,6 +506,79 @@ def create_exam_note_type(correct_options, incorrect_options):
             line-height: 1.6;
         }
 
+        /* Explanation styling */
+        .explanation {
+            padding: 20px;
+            margin: 15px 0;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            color: #fff;
+            line-height: 1.7;
+            font-size: 1em;
+        }
+
+        /* New styles for markdown elements */
+        .explanation ul, 
+        .explanation ol {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+
+        .explanation li {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+
+        .explanation strong {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .explanation p {
+            margin: 12px 0;
+        }
+
+        .explanation h1, 
+        .explanation h2, 
+        .explanation h3, 
+        .explanation h4, 
+        .explanation h5 {
+            color: #81D4FA;
+            margin: 20px 0 10px 0;
+        }
+
+        /* Remove old code-block specific styles */
+        .code-block {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 15px;
+            overflow-x: auto;
+        }
+
+        /* Code styling (now part of markdown) */
+        pre {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            color: #d4d4d4;
+        }
+
+        /* Inline code */
+        p code {
+            background-color: #1e1e1e;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        /* Option selection styling */
         .option:hover {
             background-color: #4f4f4f;
             transform: translateY(-2px);
@@ -577,6 +590,12 @@ def create_exam_note_type(correct_options, incorrect_options):
             border-color: #3949ab;
         }
 
+        .option-checkbox {
+            margin: 3px 15px 0 0;
+            transform: scale(1.2);
+        }
+
+        /* Submit button styling */
         .submit-button {
             margin-top: 30px;
             padding: 12px 25px;
@@ -599,195 +618,35 @@ def create_exam_note_type(correct_options, incorrect_options):
             cursor: not-allowed;
         }
 
+        /* Answer feedback styling */
         .explanation-container {
             margin: 25px 0;
             padding: 20px;
             border-radius: 8px;
             background-color: #3f3f3f;
-            color: white;
             border: 2px solid transparent;
-            line-height: 1.6;
         }
 
         .correct-answer {
-            border: 2px solid #4caf50 !important;
-            background-color: #1b5e20 !important;
+            border-color: #4caf50;
+            background-color: rgba(76, 175, 80, 0.1);
         }
 
         .incorrect-answer {
-            border: 2px solid #f44336 !important;
-            background-color: #b71c1c !important;
+            border-color: #f44336;
+            background-color: rgba(244, 67, 54, 0.1);
         }
 
-        .option-header {
-            font-weight: bold;
-            margin-bottom: 15px;
-            padding: 12px 15px;
-            border-radius: 8px;
-            background-color: rgba(255, 255, 255, 0.1);
-            font-size: 1.1em;
+        .was-selected {
+            border-color: #1a237e;
+            box-shadow: 0 0 10px rgba(26, 35, 126, 0.5);
         }
 
-        .option-header.was-selected {
-            background-color: #1a237e !important;
-        }
-
-        .explanation {
-            padding: 20px;
-            margin: 15px 0;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-            color: #fff;
-            line-height: 1.7;
-            font-size: 1em;
-        }
-
-        .explanation b {
-            color: #fff;
-            display: block;
-            margin: 15px 0 8px 0;
-            font-size: 1.1em;
-        }
-
+        /* Divider styling */
         hr {
             margin: 30px 0;
             border: none;
             border-top: 2px solid #666;
-        }
-
-        /* Code example styling */
-        .code-example {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #1e1e1e;
-            border-radius: 8px;
-            overflow-x: auto;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            font-family: 'Consolas', 'Monaco', monospace;
-        }
-
-        .code-example pre {
-            margin: 0;
-            padding: 0;
-            background: transparent;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-family: inherit;
-        }
-
-        .code-example code {
-            display: block;
-            font-family: inherit;
-            font-size: 14px;
-            line-height: 1.5;
-            color: #d4d4d4;
-            background: transparent;
-            white-space: pre;
-            overflow-x: auto;
-        }
-
-        /* Generic syntax highlighting */
-        .code-example .comment { color: #6A9955; }
-        .code-example .command { color: #569cd6; }
-        .code-example .output { color: #b5cea8; }
-        .code-example .string { color: #ce9178; }
-        .code-example .keyword { color: #569cd6; }
-        .code-example .function { color: #dcdcaa; }
-        .code-example .number { color: #b5cea8; }
-        .code-example .operator { color: #d4d4d4; }
-
-        /* Language-specific styles */
-        .code-example code.language-python { color: #d4d4d4; }
-        .code-example code.language-bash { color: #d4d4d4; }
-        .code-example code.language-json { color: #d4d4d4; }
-        .code-example code.language-yaml { color: #d4d4d4; }
-        .code-example code.language-typescript { color: #d4d4d4; }
-        .code-example code.language-javascript { color: #d4d4d4; }
-
-        /* Make sure code blocks in incorrect answers maintain styling */
-        .incorrect-answer .code-example {
-            background-color: #1e1e1e !important;
-            border: 1px solid #444;
-        }
-
-        .incorrect-answer .code-example code {
-            color: #d4d4d4;
-        }
-
-        .selected-correct {
-            border: 3px solid #4caf50 !important;
-            background-color: #1b5e20 !important;
-        }
-
-        .selected-incorrect {
-            border: 3px solid #f44336 !important;
-            background-color: #b71c1c !important;
-        }
-
-        .option-checkbox {
-            margin: 3px 15px 0 0;
-            transform: scale(1.2);
-        }
-
-        /* Language-specific syntax highlighting */
-        .language-csharp .keyword { color: #569CD6; }
-        .language-csharp .string { color: #CE9178; }
-        .language-csharp .function { color: #DCDCAA; }
-        .language-csharp .class-name { color: #4EC9B0; }
-        .language-csharp .comment { color: #6A9955; }
-        .language-csharp .number { color: #B5CEA8; }
-        .language-csharp .operator { color: #D4D4D4; }
-
-        .explanation-container.was-selected {
-            border: 3px solid #1a237e !important;
-            box-shadow: 0 0 10px rgba(26, 35, 126, 0.5);
-        }
-
-        .option-header.was-selected {
-            background-color: #1a237e !important;
-            color: white;
-        }
-
-        .code-block {
-            background-color: #1e1e1e;
-            border-radius: 8px;
-            margin: 15px 0;
-            padding: 15px;
-            overflow-x: auto;
-        }
-        
-        .code-block pre {
-            margin: 0;
-            padding: 0;
-            background: transparent;
-        }
-        
-        .code-block code {
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.6;
-            color: #d4d4d4;
-            display: block;
-            white-space: pre;
-        }
-        
-        /* Make sure code blocks in incorrect answers maintain styling */
-        .incorrect-answer .code-block {
-            background-color: #1e1e1e !important;
-            border: 1px solid #444;
-        }
-        
-        .incorrect-answer .code-block code {
-            color: #d4d4d4;
-        }
-        
-        /* Ensure proper spacing in explanations */
-        .explanation {
-            margin: 15px 0;
-        }
-        
-        .explanation-container {
-            margin: 20px 0;
         }
         """
 
