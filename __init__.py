@@ -400,6 +400,10 @@ def create_exam_note_type(correct_options, incorrect_options):
                     var answersDiv = document.getElementById('answers');
                     if (!answersDiv) return;
                     
+                    // Get the question text
+                    var questionDiv = document.querySelector('.question');
+                    var questionText = questionDiv ? questionDiv.textContent : '';
+                    
                     // Clear existing content
                     answersDiv.innerHTML = '';
 
@@ -414,6 +418,7 @@ def create_exam_note_type(correct_options, incorrect_options):
                         container.setAttribute('data-option-index', originalIndex);
                         
                         container.innerHTML = `
+                            <div class="question-reference">Q: ${questionText}</div>
                             <div class="option-header">${item.content}</div>
                             <div class="explanation">${item.explanation}</div>
                         `;
@@ -647,6 +652,15 @@ def create_exam_note_type(correct_options, incorrect_options):
             margin: 30px 0;
             border: none;
             border-top: 2px solid #666;
+        }
+
+        .question-reference {
+            font-style: italic;
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
         """
 
