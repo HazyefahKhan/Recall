@@ -9,6 +9,18 @@ import markdown
 
 def convert_markdown_to_html(text):
     """Convert markdown text to HTML with proper formatting."""
+    # Convert single tilde with backticks to del tags (removing backticks)
+    text = re.sub(r'`~([^~\n]+)~`', r'~\1~', text)
+    
+    # Convert double tilde with backticks to del tags (removing backticks)
+    text = re.sub(r'`~~([^~\n]+)~~`', r'~~\1~~', text)
+    
+    # Convert single tilde to del tags before processing markdown
+    text = re.sub(r'(?<!~)~([^~\n]+)~(?!~)', r'<del>\1</del>', text)
+    
+    # Convert double tildes to del tags
+    text = re.sub(r'~~([^~\n]+)~~', r'<del>\1</del>', text)
+    
     # Convert markdown to HTML using Anki's built-in markdown
     html = markdown.markdown(text)
     
@@ -80,16 +92,15 @@ ___
 #### Correct Option
 [Insert option text here] 
 
-##### Step by Step Explanation
-[Insert detailed step by step explanation of this option including any code examples/diagrams/tables if applicable]
+##### Explanation
+[Insert detailed explanation on why this option is correct]
 
 ___
 #### Incorrect Option
 [Insert option text here including] 
 
-##### Step by Step Explanation on what went wrong
-[Insert detailed step by step explanation of what reasoning lead someone to choose this incorrect option including any code examples/diagrams/tables if applicable]
-
+##### Explanation
+[Insert detailed explanation on why this option is incorrect]
 ___""")
         self.input_text.setMinimumHeight(400)
         layout.addWidget(self.input_text)
@@ -131,21 +142,24 @@ ___""")
     def parse_input(self):
         text = self.input_text.toPlainText()
         
+        # First, clean up any variations of the Explanation header
+        text = re.sub(r'##### Explanation.*?\n', '##### Explanation\n', text)
+        
         # Parse sections using regex
         sections = {}
         
         # Extract question
-        question_match = re.search(r'#### Question\s*\n(.*?)(?=\n___|\Z)', text, re.DOTALL)
+        question_match = re.search(r'#### Question\s*\n(.*?)(?=\n(?:___|---)|\Z)', text, re.DOTALL)
         if question_match:
             sections['question'] = question_match.group(1).strip()
         
         # Initialize correct options list
         sections['correct_options'] = []
         
-        # Find all correct options sections with new format
+        # Find all correct options sections
         correct_sections = re.finditer(
             r'#### Correct Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Step by Step Explanation\s*\n(.*?)(?=\n___|\Z)',  # Step by step explanation
+            r'##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
             text, re.DOTALL
         )
         
@@ -155,10 +169,10 @@ ___""")
                 'explanation': match.group(2).strip()
             })
         
-        # Extract incorrect options with new format
+        # Extract incorrect options
         incorrect_sections = re.finditer(
             r'#### Incorrect Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Step by Step Explanation on what went wrong\s*\n(.*?)(?=\n___|\Z)',  # Step by step explanation
+            r'##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
             text, re.DOTALL
         )
         
@@ -539,6 +553,11 @@ def create_exam_note_type(correct_options, incorrect_options):
             font-weight: bold;
         }
 
+        .explanation del {
+            color: #f44336;
+            text-decoration: line-through;
+        }
+
         .explanation p {
             margin: 12px 0;
         }
@@ -661,6 +680,17 @@ def create_exam_note_type(correct_options, incorrect_options):
             margin-bottom: 15px;
             padding-bottom: 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Modified bold text coloring based on answer type */
+        .correct-answer .explanation strong {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .incorrect-answer .explanation strong {
+            color: #f44336;
+            font-weight: bold;
         }
         """
 
