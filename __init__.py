@@ -158,8 +158,8 @@ ___""")
         
         # Find all correct options sections
         correct_sections = re.finditer(
-            r'#### Correct Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
+            r'#### Correct Option\s*\n(.*?)(?=\n##### Explanation\s*\n)' +  # Option text (multi-line)
+            r'\n##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
             text, re.DOTALL
         )
         
@@ -171,8 +171,8 @@ ___""")
         
         # Extract incorrect options
         incorrect_sections = re.finditer(
-            r'#### Incorrect Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
+            r'#### Incorrect Option\s*\n(.*?)(?=\n##### Explanation\s*\n)' +  # Option text (multi-line)
+            r'\n##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
             text, re.DOTALL
         )
         
