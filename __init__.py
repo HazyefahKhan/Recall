@@ -21,24 +21,163 @@ def convert_markdown_to_html(text):
     # Convert double tildes to del tags
     text = re.sub(r'~~([^~\n]+)~~', r'<del>\1</del>', text)
     
-    # Apply One Dark Pro syntax highlighting to common protocols and technical terms
-    text = re.sub(r'\b(HTTP|HTTPS|FTP|SMTP|ICMP|TCP|IP|UDP|DNS|SSH|TLS|SSL)\b(?!\w)', r'<span class="odp-blue">\1</span>', text)
+    # Apply One Dark Pro syntax highlighting to common protocols and technical terms (blue for functions/methods/protocols)
+    protocol_pattern = r'\b(HTTP|HTTPS|FTP|SMTP|ICMP|TCP|IP|UDP|DNS|SSH|TLS|SSL|ARP|IMAP|HTTP\/1\.1|HTTP\/2|HTTP 1\.1)\b(?!\w)'
+    text = re.sub(protocol_pattern, r'<span class="odp-blue">\1</span>', text)
     
-    # Apply One Dark Pro syntax highlighting to protocol names with parentheses
-    text = re.sub(r'(Hypertext Transfer Protocol|File Transfer Protocol|Simple Mail Transfer Protocol|Internet Control Message Protocol|Transmission Control Protocol|User Datagram Protocol|Domain Name System|Secure Shell|Transport Layer Security|Secure Sockets Layer)(\s*\(([^)]+)\))', 
+    # Handle protocol followed by "protocol" word or specific components
+    text = re.sub(r'\b(HTTP|HTTPS|FTP|SMTP|SSH) (protocol|request|method|header|body|version|version type|verb|status|headers|response|response codes|status code|response headers|response body|stateless protocol|stateful protocol)\b', 
+                 r'<span class="odp-blue">\1</span> <span class="odp-blue">\2</span>', text)
+    
+    # HTTP related components and concepts (blue for specific HTTP elements)
+    http_components = r'\b(HTTP (response|request|body|status code|response headers|response body|connection))\b'
+    text = re.sub(http_components, r'<span class="odp-blue">\1</span>', text)
+    
+    # Extend HTTP components more granularly (blue)
+    http_components_extended = r'\b(response body|encrypted payload|browser cookie|numeric status code|session token|TCP connection|persistent connection|non-persistent connection)\b'
+    text = re.sub(http_components_extended, r'<span class="odp-blue">\1</span>', text)
+    
+    # HTTP methods highlighting (blue for functions)
+    text = re.sub(r'\b(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)\b', r'<span class="odp-blue">\1</span>', text)
+    
+    # HTTP status codes highlighting (blue for specific codes)
+    text = re.sub(r'\b(\d{3})\s+(OK|Not Found|Multiple Choices|Continue|Internal Server Error|Moved Permanently)\b', 
+                 r'<span class="odp-blue">\1 \2</span>', text)
+    
+    # HTTP status code families (purple for keywords)
+    text = re.sub(r'\b(\d)xx\b', r'<span class="odp-purple">\1xx</span>', text)
+    
+    # Apply One Dark Pro syntax highlighting to protocol names with parentheses (purple for keywords)
+    protocol_full_names = r'(Hypertext Transfer Protocol|File Transfer Protocol|Simple Mail Transfer Protocol|Internet Control Message Protocol|' + \
+                         r'Transmission Control Protocol|User Datagram Protocol|Domain Name System|Secure Shell Protocol|Transport Layer Security|' + \
+                         r'Secure Sockets Layer|Internet Protocol|Address Resolution Protocol)'
+    
+    text = re.sub(f'{protocol_full_names}(\\s*\\(([^)]+)\\))', 
                   r'<span class="odp-purple">\1</span><span class="odp-black">\2</span>', text)
     
-    # Highlight programming languages, frameworks, and technical platforms
-    text = re.sub(r'\b(JavaScript|Python|Java|C\+\+|Ruby|PHP|HTML|CSS|React|Angular|Vue|Node\.js|TypeScript|SQL|NoSQL|MongoDB|Redis|Docker|Kubernetes|AWS|Azure)\b', 
-                  r'<span class="odp-yellow">\1</span>', text)
+    # Color individual protocol name words (purple)
+    protocol_keywords = r'\b(Hypertext|Transfer|Protocol|File|Simple|Mail|Internet|Control|Message|Transmission|' + \
+                       r'User|Datagram|Domain|Name|System|Secure|Shell|Transport|Layer|Security|Sockets|Address|Resolution)\b'
+    text = re.sub(protocol_keywords, r'<span class="odp-purple">\1</span>', text)
     
-    # Highlight technical actions and verbs
-    text = re.sub(r'\b(enables|transferring|sending|receiving|handles|serving|processing|communicating|exchanging|forming|providing)\b', 
-                  r'<span class="odp-cyan">\1</span>', text)
+    # Highlight programming languages, frameworks, and technical platforms (yellow for constants)
+    tech_pattern = r'\b(JavaScript|Python|Java|C\+\+|Ruby|PHP|HTML|CSS|React|Angular|Vue|Node\.js|TypeScript|SQL|NoSQL|MongoDB|Redis|Docker|Kubernetes|AWS|Azure|JSON|Google Chrome|Mozilla Firefox|Microsoft Edge|Safari|Developer Tools|DevTools|Web Inspector|JSON web token|blockchain|ledger|Microsoft Excel|text\/html|application\/json|HTML data|XML data|JSON data|Binary data)\b'
+    text = re.sub(tech_pattern, r'<span class="odp-yellow">\1</span>', text)
     
-    # Highlight important web/internet terms
-    text = re.sub(r'\b(World Wide Web|web|internet|online|browser|server|client|request|response|data|resources|systems|foundation|basis)\b', 
-                  r'<span class="odp-green">\1</span>', text)
+    # Highlight network architecture concepts (orange for properties/attributes)
+    network_architecture = r'\b(application layer|transport layer|network layer|link layer|physical layer|network model|protocol stack|network protocol stack|lower-level protocols|TCP\/IP|OSI model|request line|resource address|hardware-level addressing|URL|domain name resolution|status codes|encryption method|content format|key-value pairs|caching policies|security process|encryption handshake|offline caching|success|failure|client-side error|server-side error|informational response|redirect|download speed|network conditions|server capacity|security measures|payment method|content access|styling information|presentation layers|metadata|server-to-client communication|client-side|server-side|stateless|stateful|session layer|layer 7|layer 5|layer 3|layer 1|encryption across all layers|user login|connection|multiple sessions|initiation process|multiple requests|concurrent connections)\b'
+    text = re.sub(network_architecture, r'<span class="odp-orange">\1</span>', text)
+    
+    # Color individual architecture words (orange)
+    architecture_keywords = r'\b(application|transport|network|layer|layers|link|physical|model|stack|protocol|protocols|lower-level|TCP\/IP|OSI|request|line|resource|address|URL|URI|hardware-level|addressing|status|encryption|keys|values|pairs|format|content|caching|policy|policies|offline|handshake|security|process|zone|transfers|resolution|driver|updates|digit|digits|standardized|communication|specificity|complexity|redirect|download|speed|conditions|capacity|measures|payment|access|styling|presentation|metadata|client|server|browser|web)\b'
+    text = re.sub(architecture_keywords, r'<span class="odp-orange">\1</span>', text)
+    
+    # Highlight protocol positioning with layers
+    text = re.sub(r'\b(HTTP|HTTPS|FTP|SMTP|ICMP|TCP|IP|UDP|DNS|SSH|TLS|SSL|ARP|IMAP)(\s+at\s+the\s+)(application layer|transport layer|network layer|link layer)\b', 
+                 r'<span class="odp-blue">\1</span>\2<span class="odp-orange">\3</span>', text)
+    
+    # Highlight relationships between protocols and stack
+    text = re.sub(r'\b(relies on|runs on top of|resides in|below|above|on top of|included in|part of)\b', 
+                 r'<span class="odp-cyan">\1</span>', text)
+    
+    # Color individual relationship words (cyan)
+    relationship_keywords = r'\b(relies|runs|resides|below|above|top|included|part)\b'
+    text = re.sub(relationship_keywords, r'<span class="odp-cyan">\1</span>', text)
+    
+    # Highlight technical actions and verbs (cyan for operators)
+    actions_pattern = r'\b(enables|transferring|sending|receiving|handles|serving|processing|communicating|exchanging|forming|providing|' + \
+                     r'operates|functions|managing|ensuring|transmit|forwards|filter|rewrite|maps|routes|transports|responds|requests|execute|rely|resides|' + \
+                     r'perform|begin|processes|discarding|redirecting|filtering|blocking|assigned|leased|facilitates|retrieval|loading|dedicated|' + \
+                     r'restricted|tailored|used for|designed|making|responsible|might|display|verify|generate|remove|carries|transmitted|conflates|' + \
+                     r'precompiled|retrieving|pinpoints|embedded|tracking|convey|resolve|rendering|retrieval|submission|updating|expect|compress|encrypts|' + \
+                     r'indicate|labeled|termed|referred|controls|queried|works|encrypts|replaces|marks|unrelated|deletes|replaces|blocks|modifies|' + \
+                     r'executing|triggering|shutting|encountered|frequently|occasionally|commonly|controlling|stripped|attached|interpret|render|reference|' + \
+                     r'communicate|communicate|represent|receive|answer|return|reply|confusion|confuses|describes|included|referencing|returned|resolution|disclosure|conveying|communicate|disclosed|capture|show|prevent|manage|inspect|simplify|download|parse|overwhelm|flooding|crash|weaponized|denying|mounted|deliberately|reused|relies on|reusing|consuming|times out|mounted)\b'
+    text = re.sub(actions_pattern, r'<span class="odp-cyan">\1</span>', text)
+    
+    # Add singular/plural forms for technical actions (cyan)
+    actions_singular_plural = r'\b(transfer|transfers|transmitted|transmits|request|response|responses|load|loads|handle|service|map|route|' + \
+                              r'process|transport|respond|request|execute|execution|rely|reside|forward|filter|filters|rewrite|rewrites|' + \
+                              r'discard|discards|redirect|redirects|filter|block|blocks|assign|assigns|lease|leases|facilitate|retrieve|' + \
+                              r'retrieved|load|loaded|design|designed|make|made|responsible|use|used|enable|enabled|manage|managed|ensure|' + \
+                              r'ensured|form|formed|provide|provided|operate|operated|function|functioned|display|displays|verify|verifies|' + \
+                              r'generate|generates|remove|removes|carry|carries|conflate|conflates|compile|compiles|retrieve|retrieves|' + \
+                              r'pinpoint|pinpoints|embed|embeds|track|tracks|convey|conveys|resolve|resolves|render|renders|submit|submits|' + \
+                              r'expect|expects|retrieve|retrieves|update|updates|compress|compresses|encrypt|encrypts|query|queries|' + \
+                              r'delete|deletes|modify|modifies|replace|replaces|block|blocks|label|labels|term|terms|refer|refers|' + \
+                              r'control|controls|mark|marks|execute|executes|trigger|triggers|shutdown|shutdowns|strip|strips|attach|attaches|' + \
+                              r'interpret|interprets|communicate|communicates|represent|represents|receive|receives|answer|answers|return|returns|' + \
+                              r'reply|replies|confuse|confuses|describe|describes|include|includes|reference|references|disclose|discloses|' + \
+                              r'convey|conveys|travel|travels|parse|parses|capture|captures|show|shows|prevent|prevents|manage|manages|inspect|inspects|simplify|simplifies|download|downloads)\b'
+    text = re.sub(actions_singular_plural, r'<span class="odp-cyan">\1</span>', text)
+    
+    # Add browser-specific actions (cyan)
+    browser_actions = r'\b(converts HTML into a webpage|removes HTML content|stores HTML as a text file|encrypts HTML for security|renders|rendering)\b'
+    text = re.sub(browser_actions, r'<span class="odp-cyan">\1</span>', text)
+    
+    # Highlight important web/internet terms (green for strings)
+    web_terms = r'\b(World Wide Web|web|internet|online|browser|server|client|request|response|data|resources|systems|foundation|basis|' + \
+               r'content|communications|information|transfer|packet|frame|message|record|address|routing|addressing|traffic|transaction|' + \
+               r'network|devices|media|interactive|text|login|command|error|operational|flow|sequence|hypertext|hypertext links|' + \
+               r'hypertext-linked|website content|webpages|data exchange|diagnostic functions|error reporting|email transmission|' + \
+               r'data payloads|domain names|inbound packets|congestion|features|core mechanism|general information|corresponding|' + \
+               r'standard|interaction|communications possible|Internet communication|client application|encoded data|data submission|' + \
+               r'database query|protocol version|directory structure|encryption key|hardware versions|geographical data|authentication|' + \
+               r'user agent|content type|anti-malware|form submissions|JSON payloads|authorization key|security configuration|multi-faceted|structured|' + \
+               r'personal data|metadata|website|webpage|web traffic|cached version|unencrypted data transfer|action indicator|HTTP verb|' + \
+               r'key-value pairs|textual information|text-based details|structured pairs|metadata|instructions|client browser details|requested data|' + \
+               r'parameters|JSON syntax|URL parameters|cookie data|session identifiers|browser metadata|form data|multipart form data|URL-encoded key-value pairs|' + \
+               r'HTTP request body|body of an HTTP request|information being transferred|data payload|submitted information|form inputs|internet server|web client|' + \
+               r'web clients|internet servers|content details|status details|encryption status|protocol in use|unencrypted resources|encrypted resources|caching|' + \
+               r'offline caching|direct reply|content returned|specifics of the preceding request|valuable information|offline data|HTTP status code|status codes|' + \
+               r'language information|language|reading mode|requested information|default error message|stateless protocol|stateful sessions|persistent session data|self-contained|' + \
+               r'caches resources|indefinite caching|tracking user data|original specification|non-persistent|persistent connections|data transfer|reliable data transmission|overhead|' + \
+               r'subsequent requests|resource consumption|TCP handshakes|sockets|deliberately closed|OSI model|application layer attacks|network layer attacks|session layer attacks|physical layer attacks|' + \
+               r'denial-of-service|distributed denial-of-service|DoS|DDoS|excessive requests|massive request volumes|strategic request volumes|legitimate access)\b'
+    text = re.sub(web_terms, r'<span class="odp-green">\1</span>', text)
+    
+    # Add individual web/internet terms (green)
+    web_terms_individual = r'\b(World|Wide|Web|website|webpage|page|pages|internetworking|browser|browsers|server|servers|client|clients|' + \
+                          r'request|requests|response|responses|datum|resource|system|foundation|content|communication|communicate|' + \
+                          r'inform|information|transfer|transfers|packet|packets|frame|frames|message|messages|record|records|address|' + \
+                          r'addresses|route|routes|traffic|transact|transaction|transactions|network|networks|device|medium|media|' + \
+                          r'interact|interactive|text|texts|login|logins|command|commands|operation|operations|sequence|sequences|' + \
+                          r'hyper|link|links|linked|site|sites|exchange|exchanges|diagnostic|diagnose|report|reports|email|emails|' + \
+                          r'payload|payloads|domain|domains|inbound|outbound|incoming|outgoing|congest|congestion|feature|features|' + \
+                          r'core|mechanism|mechanisms|general|correspond|corresponds|standard|standards|interact|interacts|interaction|interactions|' + \
+                          r'encode|encoded|submit|submission|query|queries|encrypt|encryption|version|versions|structure|structured|' + \
+                          r'authenticate|authentication|agent|agents|type|types|malware|form|forms|security|secure|multi|faceted|token|tokens|' + \
+                          r'key|keys|value|values|pair|pairs|textual|text-based|detail|details|instruction|metadata|parameter|parameters|syntax|' + \
+                          r'URL|cookie|cookies|session|identifier|identifiers|body|multipart|submitted|inputs|JSON|XML|offline|data|precedence|preceding|' + \
+                          r'valuable|returned|direct|unencrypted|encrypted|specifics|details|requested|asked|language|reading|mode)\b'
+    text = re.sub(web_terms_individual, r'<span class="odp-green">\1</span>', text)
+    
+    # Highlight networking components and hardware (red for variables/tags)
+    components = r'\b(server|client machine|router|switch|firewall|DNS queries|static IP address|email message|browsers|hosts|' + \
+                r'machine addresses|physical machine|networked devices|MAC address|server-side scripts|storage|file system path|' + \
+                r'web host|domain registrar|verification token|DNS resolver|anti-malware signature|firewall configuration|' + \
+                r'time-based one-time password|hardware versions|database system|server resource|server memory capacity|' + \
+                r'compression settings|physical hardware|operating system level|hardware configuration|programming language|' + \
+                r'network analysis tools|browser\'s developer tools|DNS records|user-agent strings|database schema|IP address|network tab|' + \
+                r'username|password|credentials|user credentials|client hardware|DNS root record|SSL private key|blockchain ledger|' + \
+                r'DNS infrastructure|device driver|driver updates|client hardware|routing table|server\'s private key|zone transfers|' + \
+                r'add-ons manager|reading mode|data inspector|browser extensions|raw HTTP traffic|unauthorized users|unauthorized access|target device|' + \
+                r'hardware and signal transmission|IP-based operations)\b'
+    text = re.sub(components, r'<span class="odp-red">\1</span>', text)
+    
+    # Add individual component words (red)
+    components_individual = r'\b(machine|machines|router|routers|switch|switches|firewall|firewalls|query|queries|static|dynamic|' + \
+                           r'host|hosts|address|addresses|physical|hardware|networked|network|device|devices|browser|browsers|' + \
+                           r'MAC|server-side|script|scripts|storage|file|path|paths|host|hosts|registrar|registrars|verification|' + \
+                           r'resolver|resolvers|signature|signatures|configuration|configurations|password|passwords|time-based|' + \
+                           r'database|system|systems|memory|capacity|compression|level|resource|resources|hardware-level|setup|' + \
+                           r'programming|language|languages|environment|environments|analysis|tools|tool|tab|tabs|developer|schema|schemas|' + \
+                           r'string|strings|record|records|user-agent|username|credential|credentials|root|ledger|driver|drivers|private|' + \
+                           r'zone|zones|transfer|transfers|infrastructure|SSL|SMTP|FTP|add-ons|manager|data|inspector|extensions|raw|unauthorized|access)\b'
+    text = re.sub(components_individual, r'<span class="odp-red">\1</span>', text)
+    
+    # Highlight "not" statements in incorrect explanations
+    text = re.sub(r'\b(not|rather than|instead of|does not|cannot|no|never|unrelated|confuses|mandatory|compulsory|required|typically|generally|occur|only|beyond|contradicting)\b', r'<span class="odp-red">\1</span>', text)
     
     # Convert markdown to HTML using Anki's built-in markdown
     html = markdown.markdown(text)
@@ -222,7 +361,7 @@ ___""")
             incorrect_count = len(sections['incorrect_options'])
             
             # Create note with version number
-            model_name = f"ExamCard{correct_count}{incorrect_count}v1"
+            model_name = f"ExamCard{correct_count}{incorrect_count}v2"
             model = mw.col.models.by_name(model_name)
             if not model:
                 create_exam_note_type(correct_count, incorrect_count)
