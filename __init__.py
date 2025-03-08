@@ -8,7 +8,7 @@ import re
 import markdown
 
 def convert_markdown_to_html(text):
-    """Convert markdown text to HTML with proper formatting."""
+    """Convert markdown text to HTML with proper formatting and One Dark Pro syntax highlighting."""
     # Convert single tilde with backticks to del tags (removing backticks)
     text = re.sub(r'`~([^~\n]+)~`', r'~\1~', text)
     
@@ -20,6 +20,25 @@ def convert_markdown_to_html(text):
     
     # Convert double tildes to del tags
     text = re.sub(r'~~([^~\n]+)~~', r'<del>\1</del>', text)
+    
+    # Apply One Dark Pro syntax highlighting to common protocols and technical terms
+    text = re.sub(r'\b(HTTP|HTTPS|FTP|SMTP|ICMP|TCP|IP|UDP|DNS|SSH|TLS|SSL)\b(?!\w)', r'<span class="odp-blue">\1</span>', text)
+    
+    # Apply One Dark Pro syntax highlighting to protocol names with parentheses
+    text = re.sub(r'(Hypertext Transfer Protocol|File Transfer Protocol|Simple Mail Transfer Protocol|Internet Control Message Protocol|Transmission Control Protocol|User Datagram Protocol|Domain Name System|Secure Shell|Transport Layer Security|Secure Sockets Layer)(\s*\(([^)]+)\))', 
+                  r'<span class="odp-purple">\1</span><span class="odp-black">\2</span>', text)
+    
+    # Highlight programming languages, frameworks, and technical platforms
+    text = re.sub(r'\b(JavaScript|Python|Java|C\+\+|Ruby|PHP|HTML|CSS|React|Angular|Vue|Node\.js|TypeScript|SQL|NoSQL|MongoDB|Redis|Docker|Kubernetes|AWS|Azure)\b', 
+                  r'<span class="odp-yellow">\1</span>', text)
+    
+    # Highlight technical actions and verbs
+    text = re.sub(r'\b(enables|transferring|sending|receiving|handles|serving|processing|communicating|exchanging|forming|providing)\b', 
+                  r'<span class="odp-cyan">\1</span>', text)
+    
+    # Highlight important web/internet terms
+    text = re.sub(r'\b(World Wide Web|web|internet|online|browser|server|client|request|response|data|resources|systems|foundation|basis)\b', 
+                  r'<span class="odp-green">\1</span>', text)
     
     # Convert markdown to HTML using Anki's built-in markdown
     html = markdown.markdown(text)
@@ -158,8 +177,8 @@ ___""")
         
         # Find all correct options sections
         correct_sections = re.finditer(
-            r'#### Correct Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
+            r'#### Correct Option\s*\n(.*?)(?=\n##### Explanation\s*\n)' +  # Option text (multi-line)
+            r'\n##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
             text, re.DOTALL
         )
         
@@ -171,8 +190,8 @@ ___""")
         
         # Extract incorrect options
         incorrect_sections = re.finditer(
-            r'#### Incorrect Option\s*\n([^\n]+)\s*\n\n?' +  # Option text
-            r'##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
+            r'#### Incorrect Option\s*\n(.*?)(?=\n##### Explanation\s*\n)' +  # Option text (multi-line)
+            r'\n##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
             text, re.DOTALL
         )
         
@@ -202,8 +221,8 @@ ___""")
             correct_count = len(sections['correct_options'])
             incorrect_count = len(sections['incorrect_options'])
             
-            # Create note
-            model_name = f"ExamCard{correct_count}{incorrect_count}"
+            # Create note with version number
+            model_name = f"ExamCard{correct_count}{incorrect_count}v1"
             model = mw.col.models.by_name(model_name)
             if not model:
                 create_exam_note_type(correct_count, incorrect_count)
@@ -247,7 +266,7 @@ mw.form.menuTools.addAction(action)
 
 def create_exam_note_type(correct_options, incorrect_options):
     """Create an exam note type with code examples."""
-    model_name = f"ExamCard{correct_options}{incorrect_options}"
+    model_name = f"ExamCard{correct_options}{incorrect_options}v1"
     if model_name not in mw.col.models.all_names():
         mm = mw.col.models
         m = mm.new(model_name)
@@ -484,56 +503,101 @@ def create_exam_note_type(correct_options, incorrect_options):
         </script>
         """
 
-        # Add CSS
+        # Add CSS - One Dark Pro theme with syntax highlighting
         m['css'] = """
         .card {
             font-family: 'Segoe UI', Arial, sans-serif;
             font-size: 16px;
             line-height: 1.6;
             text-align: left;
-            color: white;
-            background-color: #2f2f2f;
+            color: #abb2bf;
+            background-color: #282c34;
             padding: 30px;
             max-width: 900px;
             margin: 0 auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
         }
 
         /* Question styling */
         .question {
             margin-bottom: 30px;
-            font-weight: bold;
+            font-weight: 600;
             font-size: 1.3em;
-            color: white;
+            color: #e5c07b;
             line-height: 1.5;
-            padding: 15px;
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
+            padding: 18px 20px;
+            background-color: #2c313a;
+            border-radius: 10px;
+            border-left: 4px solid #61afef;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        /* One Dark Pro syntax highlighting classes */
+        .odp-red {
+            color: #e06c75; /* Used for variables, properties, tags */
+        }
+        
+        .odp-green {
+            color: #98c379; /* Used for strings, web terms */
+        }
+        
+        .odp-yellow {
+            color: #e5c07b; /* Used for this, constants, programming languages */
+        }
+        
+        .odp-blue {
+            color: #61afef; /* Used for functions, methods, protocols */
+        }
+        
+        .odp-purple {
+            color: #c678dd; /* Used for keywords, protocol full names */
+        }
+        
+        .odp-cyan {
+            color: #56b6c2; /* Used for operators, technical actions */
+        }
+        
+        .odp-orange {
+            color: #d19a66; /* Used for numbers, attributes */
+        }
+        
+        .odp-black {
+            color: #5c6370; /* Used for comments, parentheses */
+        }
+        
+        .odp-white {
+            color: #abb2bf; /* Used for regular text */
         }
 
         /* Option styling */
         .option {
             margin: 15px 0;
-            padding: 15px 20px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
+            padding: 16px 20px;
+            border: 1px solid rgba(62, 68, 81, 0.5);
+            border-radius: 10px;
             cursor: pointer;
             display: flex;
             align-items: flex-start;
             transition: all 0.3s ease;
-            background-color: #3f3f3f;
-            color: white;
+            background-color: rgba(44, 49, 58, 0.7);
+            color: #abb2bf;
             line-height: 1.6;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         /* Explanation styling */
         .explanation {
             padding: 20px;
             margin: 15px 0;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-            color: #fff;
+            background-color: rgba(44, 49, 58, 0.7);
+            border-radius: 10px;
+            color: #abb2bf;
             line-height: 1.7;
             font-size: 1em;
+            border-left: 4px solid #56b6c2;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         /* New styles for markdown elements */
@@ -549,12 +613,12 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
 
         .explanation strong {
-            color: #4CAF50;
+            color: #98c379;
             font-weight: bold;
         }
 
         .explanation del {
-            color: #f44336;
+            color: #e06c75;
             text-decoration: line-through;
         }
 
@@ -567,51 +631,117 @@ def create_exam_note_type(correct_options, incorrect_options):
         .explanation h3, 
         .explanation h4, 
         .explanation h5 {
-            color: #81D4FA;
+            color: #61afef;
             margin: 20px 0 10px 0;
         }
 
-        /* Remove old code-block specific styles */
-        .code-block {
-            background-color: #1e1e1e;
-            border-radius: 8px;
-            margin: 15px 0;
-            padding: 15px;
-            overflow-x: auto;
-        }
-
-        /* Code styling (now part of markdown) */
+        /* Code styling */
         pre {
-            background-color: #1e1e1e;
+            background-color: #21252b;
             padding: 15px;
             border-radius: 8px;
             overflow-x: auto;
             margin: 15px 0;
+            border: 1px solid rgba(62, 68, 81, 0.5);
+            box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
         }
 
         code {
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 14px;
-            color: #d4d4d4;
+            color: #abb2bf;
         }
 
         /* Inline code */
         p code {
-            background-color: #1e1e1e;
+            background-color: #21252b;
             padding: 2px 5px;
             border-radius: 3px;
+            border: 1px solid rgba(62, 68, 81, 0.5);
+        }
+
+        /* Code block specific styling */
+        .code-block {
+            background-color: #21252b;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 15px;
+            overflow-x: auto;
+            border: 1px solid rgba(62, 68, 81, 0.5);
+            box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Syntax highlighting colors - One Dark Pro */
+        .token.comment,
+        .token.prolog,
+        .token.doctype,
+        .token.cdata {
+            color: #5c6370;
+        }
+
+        .token.punctuation {
+            color: #abb2bf;
+        }
+
+        .token.selector,
+        .token.tag {
+            color: #e06c75;
+        }
+
+        .token.property,
+        .token.boolean,
+        .token.number,
+        .token.constant,
+        .token.symbol,
+        .token.attr-name,
+        .token.deleted {
+            color: #d19a66;
+        }
+
+        .token.string,
+        .token.char,
+        .token.attr-value,
+        .token.builtin,
+        .token.inserted {
+            color: #98c379;
+        }
+
+        .token.operator,
+        .token.entity,
+        .token.url,
+        .language-css .token.string,
+        .style .token.string {
+            color: #56b6c2;
+        }
+
+        .token.atrule,
+        .token.keyword {
+            color: #c678dd;
+        }
+
+        .token.function,
+        .token.class-name {
+            color: #61afef;
+        }
+
+        .token.regex,
+        .token.important,
+        .token.variable {
+            color: #c678dd;
         }
 
         /* Option selection styling */
         .option:hover {
-            background-color: #4f4f4f;
+            background-color: rgba(58, 64, 75, 0.9);
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            border-color: rgba(97, 175, 239, 0.3);
         }
 
         .option.selected {
-            background-color: #1a237e;
-            border-color: #3949ab;
+            background-color: rgba(58, 64, 75, 0.9);
+            border-color: #61afef;
+            box-shadow: 0 0 0 1px #61afef, 0 4px 12px rgba(97, 175, 239, 0.2);
         }
 
         .option-checkbox {
@@ -622,75 +752,102 @@ def create_exam_note_type(correct_options, incorrect_options):
         /* Submit button styling */
         .submit-button {
             margin-top: 30px;
-            padding: 12px 25px;
-            background-color: #2196f3;
-            color: white;
+            padding: 12px 28px;
+            background-color: #61afef;
+            color: #282c34;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             font-size: 16px;
             transition: all 0.3s ease;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(97, 175, 239, 0.3);
         }
 
         .submit-button:hover:not(:disabled) {
-            background-color: #1976d2;
+            background-color: #56b6c2;
             transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(86, 182, 194, 0.4);
         }
 
         .submit-button:disabled {
-            background-color: #666;
+            background-color: #4b5263;
             cursor: not-allowed;
+            color: #abb2bf;
+            box-shadow: none;
         }
 
         /* Answer feedback styling */
         .explanation-container {
             margin: 25px 0;
             padding: 20px;
-            border-radius: 8px;
-            background-color: #3f3f3f;
+            border-radius: 10px;
+            background-color: rgba(44, 49, 58, 0.7);
             border: 2px solid transparent;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         .correct-answer {
-            border-color: #4caf50;
-            background-color: rgba(76, 175, 80, 0.1);
+            border-color: rgba(152, 195, 121, 0.7);
+            background-color: rgba(152, 195, 121, 0.05);
         }
 
         .incorrect-answer {
-            border-color: #f44336;
-            background-color: rgba(244, 67, 54, 0.1);
+            border-color: rgba(224, 108, 117, 0.7);
+            background-color: rgba(224, 108, 117, 0.05);
         }
 
         .was-selected {
-            border-color: #1a237e;
-            box-shadow: 0 0 10px rgba(26, 35, 126, 0.5);
+            border-color: rgba(97, 175, 239, 0.7);
+            box-shadow: 0 0 15px rgba(97, 175, 239, 0.2);
         }
 
         /* Divider styling */
         hr {
             margin: 30px 0;
             border: none;
-            border-top: 2px solid #666;
+            height: 1px;
+            background: linear-gradient(to right, transparent, rgba(62, 68, 81, 0.7), transparent);
         }
 
         .question-reference {
             font-style: italic;
             font-size: 0.85em;
-            color: #888;
+            color: #7f8c98;
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(62, 68, 81, 0.5);
+            font-weight: 500;
+            letter-spacing: 0.3px;
         }
 
         /* Modified bold text coloring based on answer type */
         .correct-answer .explanation strong {
-            color: #4CAF50;
+            color: #98c379;
             font-weight: bold;
         }
 
         .incorrect-answer .explanation strong {
-            color: #f44336;
+            color: #e06c75;
             font-weight: bold;
+        }
+
+        /* Option header styling */
+        .option-header {
+            font-weight: bold;
+            padding: 12px 15px;
+            margin-bottom: 12px;
+            border-radius: 6px;
+            background-color: rgba(33, 37, 43, 0.8);
+            color: #e5c07b;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .option-header.was-selected {
+            background-color: rgba(43, 75, 94, 0.8);
+            color: #61afef;
+            box-shadow: 0 2px 8px rgba(97, 175, 239, 0.2);
         }
         """
 
@@ -703,11 +860,11 @@ def create_exam_note_type(correct_options, incorrect_options):
 
 def init():
     # Create exam card types
-    create_exam_note_type(1, 3)  # ExamCard13 (1 correct, 3 incorrect options)
-    create_exam_note_type(1, 4)  # ExamCard14 (1 correct, 4 incorrect options)
-    create_exam_note_type(1, 5)  # ExamCard15 (1 correct, 5 incorrect options)
-    create_exam_note_type(2, 3)  # ExamCard23 (2 correct, 3 incorrect options)
-    create_exam_note_type(3, 2)  # ExamCard32 (3 correct, 2 incorrect options)
+    create_exam_note_type(1, 3)  # ExamCard13v1 (1 correct, 3 incorrect options)
+    create_exam_note_type(1, 4)  # ExamCard14v1 (1 correct, 4 incorrect options)
+    create_exam_note_type(1, 5)  # ExamCard15v1 (1 correct, 5 incorrect options)
+    create_exam_note_type(2, 3)  # ExamCard23v1 (2 correct, 3 incorrect options)
+    create_exam_note_type(3, 2)  # ExamCard32v1 (3 correct, 2 incorrect options)
 
 # Add the init hook
 gui_hooks.profile_did_open.append(init) 
