@@ -9,6 +9,45 @@ import markdown
 
 def convert_markdown_to_html(text):
     """Convert markdown text to HTML with proper formatting and One Dark Pro syntax highlighting."""
+    # Helper function to prevent highlighting text that's already in span tags
+    # This prevents nested span tags and resolves issues with overlapping highlighting patterns
+    # which would otherwise result in malformed HTML like:
+    # <span class="odp-blue">HTTP</span> <span class="odp-green"><span class="odp-blue">protocol</span></span>
+    def safe_highlight(pattern, replacement, text, flags=0):
+        # Use a more precise regex for span tags that avoids overly greedy matching
+        # Non-greedy matching with specific class pattern for our syntax highlighting
+        span_pattern = r'<span class="odp-[^"]*">[^<>]*?</span>'
+        
+        # Split the text into chunks (spans and non-spans)
+        chunks = []
+        last_end = 0
+        
+        # Find all existing span tags with our specific class pattern
+        for match in re.finditer(span_pattern, text):
+            start, end = match.span()
+            
+            # Add text before the span
+            if start > last_end:
+                chunks.append((text[last_end:start], False))
+            
+            # Add the span
+            chunks.append((match.group(), True))
+            last_end = end
+        
+        # Add remaining text
+        if last_end < len(text):
+            chunks.append((text[last_end:], False))
+        
+        # Process only non-span chunks
+        result = ""
+        for chunk, is_span in chunks:
+            if is_span:
+                result += chunk
+            else:
+                result += re.sub(pattern, replacement, chunk, flags=flags)
+        
+        return result
+    
     # Convert single tilde with backticks to del tags (removing backticks)
     text = re.sub(r'`~([^~\n]+)~`', r'~\1~', text)
     
@@ -20,56 +59,951 @@ def convert_markdown_to_html(text):
     
     # Convert double tildes to del tags
     text = re.sub(r'~~([^~\n]+)~~', r'<del>\1</del>', text)
+
+    # Now use safe_highlight for all syntax highlighting patterns
+    # Example of converting the first few patterns:
     
-    # Apply One Dark Pro syntax highlighting to common protocols and technical terms (blue for functions/methods/protocols)
+    # Apply syntax highlighting to protocols, API endpoints, and network operations (blue)
     protocol_pattern = r'\b(HTTP|HTTPS|FTP|SMTP|ICMP|TCP|IP|UDP|DNS|SSH|TLS|SSL|ARP|IMAP|HTTP\/1\.1|HTTP\/2|' \
                        r'HTTP 1\.1|Domain Name System|File Transfer Protocol|Hypertext Transfer Protocol|' \
                        r'Secure Sockets Layer|DNS servers|web browsers|DNS resolution|DNS lookup|DNS query|' \
-                       r'DNS translation|bookmarking|dedicated, proprietary web browsers|social media algorithms)\b(?!\w)'
-    text = re.sub(protocol_pattern, r'<span class="odp-blue">\1</span>', text)
+                       r'DNS translation|bookmarking|dedicated, proprietary web browsers|social media algorithms|POP3)\b(?!\w)'
+    text = safe_highlight(protocol_pattern, r'<span class="odp-blue">\1</span>', text)
     
-    # Handle protocol followed by "protocol" word or specific components
-    text = re.sub(r'\b(HTTP|HTTPS|FTP|SMTP|SSH) (protocol|request|method|header|body|version|version type|' \
-                  r'verb|status|headers|response|response codes|status code|response headers|response body|' \
-                  r'stateless protocol|stateful protocol)\b', 
-                 r'<span class="odp-blue">\1</span> <span class="odp-blue">\2</span>', text)
+    # Handle protocol followed by components (blue for API endpoints and operations)
+    protocol_components = r'\b(HTTP|HTTPS|FTP|SMTP|SSH|TCP|IP|UDP|DNS|TLS|SSL) (protocol|request|method|header|body|version)\b'
+    text = safe_highlight(protocol_components, r'<span class="odp-blue">\1</span> <span class="odp-blue">\2</span>', text)
     
-    # HTTP related components and concepts (blue for specific HTTP elements)
-    http_components = r'\b(HTTP (response|request|body|status code|response headers|response body|connection))\b'
-    text = re.sub(http_components, r'<span class="odp-blue">\1</span>', text)
+    # HTTP related components (blue for API endpoints and operations)
+    http_components = r'\b(HTTP (response|request|body|status code|response headers|response body|connection|' \
+                      r'protocol|method|header|version|verb|authentication|caching|redirect|content type|' \
+                      r'content length|user agent|host|referer|origin|accept|authorization|cookie))\b'
+    text = safe_highlight(http_components, r'<span class="odp-blue">\1</span>', text)
     
-    # Extend HTTP components more granularly (blue)
+    # Network operations components (blue)
     http_components_extended = r'\b(response body|encrypted payload|browser cookie|numeric status code|' \
-                               r'session token|TCP connection|persistent connection|non-persistent connection)\b'
-    text = re.sub(http_components_extended, r'<span class="odp-blue">\1</span>', text)
+                               r'session token|TCP connection|persistent connection|non-persistent connection|' \
+                               r'keep-alive connection|connection pooling|connection timeout|handshake|' \
+                               r'SSL/TLS handshake|certificate validation|cipher suite|secure connection|' \
+                               r'proxy connection|load balancing|content negotiation|content delivery|' \
+                               r'content compression|gzip encoding|chunked transfer|byte range|' \
+                               r'request timeout|response time|latency|throughput|bandwidth|' \
+                               r'DNS resolution|DNS caching|IP routing|packet transmission|' \
+                               r'websocket connection|server push|client pull|polling|long polling)\b'
+    text = safe_highlight(http_components_extended, r'<span class="odp-blue">\1</span>', text)
     
-    # HTTP methods highlighting (blue for functions)
-    text = re.sub(r'\b(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)\b', r'<span class="odp-blue">\1</span>', text)
+    # HTTP methods (blue for API endpoints/operations)
+    http_methods = r'\b(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH|CONNECT|TRACE|PROPFIND|PROPPATCH|' \
+                  r'MKCOL|COPY|MOVE|LOCK|UNLOCK|SEARCH)\b'
+    text = safe_highlight(http_methods, r'<span class="odp-blue">\1</span>', text)
     
-    # HTTP status codes highlighting (blue for specific codes)
-    text = re.sub(r'\b(\d{3})\s+(OK|Not Found|Multiple Choices|Continue|Internal Server Error|Moved Permanently)\b', 
-                 r'<span class="odp-blue">\1 \2</span>', text)
+    # HTTP status codes (blue for API operations)
+    status_codes = r'\b(\d{3})\s+(OK|Created|Accepted|No Content|Partial Content|' \
+                  r'Multiple Choices|Moved Permanently|Found|See Other|Not Modified|Temporary Redirect|' \
+                  r'Bad Request|Unauthorized|Forbidden|Not Found|Method Not Allowed|Not Acceptable|' \
+                  r'Request Timeout|Conflict|Gone|Length Required|Precondition Failed|' \
+                  r'Payload Too Large|URI Too Long|Unsupported Media Type|Range Not Satisfiable|' \
+                  r'Expectation Failed|Unprocessable Entity|Too Early|Upgrade Required|' \
+                  r'Internal Server Error|Not Implemented|Bad Gateway|Service Unavailable|' \
+                  r'Gateway Timeout|HTTP Version Not Supported|Variant Also Negotiates|' \
+                  r'Insufficient Storage|Loop Detected|Not Extended|Network Authentication Required|Continue)\b'
+    text = safe_highlight(status_codes, r'<span class="odp-blue">\1 \2</span>', text)
     
-    # HTTP status code families (purple for keywords)
-    text = re.sub(r'\b(\d)xx\b', r'<span class="odp-purple">\1xx</span>', text)
+    # HTTP status code families (blue for API operations)
+    http_status_families = r'\b(1xx Informational|2xx Success|3xx Redirection|4xx Client Error|5xx Server Error)\b'
+    text = safe_highlight(http_status_families, r'<span class="odp-blue">\1</span>', text)
     
-    # Apply One Dark Pro syntax highlighting to protocol names with parentheses (purple for keywords)
+    # HTTP headers (blue for API operations)
+    http_headers = r'\b(Content-Type|Content-Length|Authorization|User-Agent|Accept|Accept-Encoding|' \
+                   r'Accept-Language|Cache-Control|Connection|Cookie|Host|Origin|Referer|' \
+                   r'X-Requested-With|X-Forwarded-For|X-Forwarded-Proto|X-CSRF-Token|' \
+                   r'Access-Control-Allow-Origin|Access-Control-Allow-Methods|' \
+                   r'Access-Control-Allow-Headers|Access-Control-Max-Age|' \
+                   r'ETag|Last-Modified|If-Modified-Since|If-None-Match|' \
+                   r'Strict-Transport-Security|X-Content-Type-Options|X-Frame-Options|' \
+                   r'X-XSS-Protection|Content-Security-Policy|Public-Key-Pins)\b'
+    text = safe_highlight(http_headers, r'<span class="odp-blue">\1</span>', text)
+    
+    # Cloud services (blue for functions and endpoints)
+    cloud_services = r'\b(AWS Lambda|Azure Functions|Google Cloud Functions|S3 bucket|EC2 instance|RDS database|' \
+                    r'DynamoDB|Lambda function|Step Function|CloudFormation|CloudFront|ECS|EKS|Fargate|' \
+                    r'Azure App Service|Azure Logic Apps|Cosmos DB|Blob Storage|Azure DevOps|' \
+                    r'Google Cloud Run|Firebase|Firestore|BigQuery|Cloud Storage|App Engine|' \
+                    r'AWS API Gateway|AWS SQS|AWS SNS|AWS Kinesis|AWS Glue|AWS Athena|AWS CloudWatch|' \
+                    r'AWS IAM|AWS VPC|AWS Route53|AWS CodePipeline|AWS CodeBuild|AWS CodeDeploy|' \
+                    r'Azure API Management|Azure Service Bus|Azure Event Grid|Azure Event Hubs|' \
+                    r'Azure Key Vault|Azure Monitor|Azure Active Directory|Azure Virtual Network|' \
+                    r'Azure DNS|Azure DevOps Pipelines|Azure Kubernetes Service|Azure Container Registry|' \
+                    r'Google Cloud Pub/Sub|Google Cloud Dataflow|Google Cloud Dataproc|Google Cloud IAM|' \
+                    r'Google Cloud VPC|Google Cloud DNS|Google Cloud Build|Google Kubernetes Engine|' \
+                    r'Heroku|Digital Ocean|Netlify|Vercel|Cloudflare|Akamai|IBM Cloud|Oracle Cloud|' \
+                    r'Alibaba Cloud|Tencent Cloud|OpenStack|VMware Cloud|Salesforce Platform|' \
+                    r'serverless function|cloud function|microservice|container service|managed service|' \
+                    r'cloud database|cloud storage|content delivery network|CDN|load balancer|' \
+                    r'auto-scaling group|virtual machine|VM instance|Kubernetes cluster|' \
+                    r'S3|EC2|RDS|VPC|IAM|SNS|SQS|EBS|ELB|ALB|NLB|ACM|WAF|' \
+                    r'Lambda|Glue|Athena|EMR|Redshift|Aurora|DynamoDB|ElastiCache|' \
+                    r'CloudWatch|CloudTrail|CloudFront|Route53|Cognito|Amplify|AppSync|' \
+                    r'Beanstalk|Lightsail|Fargate|ECS|EKS|ECR|CodeBuild|CodePipeline|CodeDeploy)\b'
+    text = safe_highlight(cloud_services, r'<span class="odp-blue">\1</span>', text)
+    
+    # Docker commands (blue for operations)
+    docker_commands = r'\b(docker run|docker build|docker compose|docker pull|docker push|docker exec|' \
+                     r'docker ps|docker images|docker rm|docker rmi|docker start|docker stop|docker restart|' \
+                     r'docker-compose up|docker-compose down|docker-compose build|docker-compose logs|' \
+                     r'docker volume create|docker volume ls|docker volume rm|docker volume prune|' \
+                     r'docker network create|docker network ls|docker network rm|docker network prune|' \
+                     r'docker logs|docker inspect|docker stats|docker top|docker attach|docker detach|' \
+                     r'docker cp|docker commit|docker diff|docker history|docker info|docker version|' \
+                     r'docker save|docker load|docker export|docker import|docker system prune|' \
+                     r'docker container|docker image|docker service|docker swarm|docker stack|docker secret|' \
+                     r'docker config|docker context|docker manifest|docker buildx|docker scan|' \
+                     r'Dockerfile|docker tag|docker login|docker logout|docker search|docker hub|' \
+                     r'FROM|RUN|CMD|ENTRYPOINT|WORKDIR|COPY|ADD|ENV|ARG|EXPOSE|VOLUME|USER|LABEL|HEALTHCHECK)\b'
+    text = safe_highlight(docker_commands, r'<span class="odp-blue">\1</span>', text)
+    
+    # CI/CD operations (blue for pipeline operations)
+    text = safe_highlight(r'\b(continuous integration|continuous delivery|continuous deployment|build pipeline|' \
+                     r'deployment pipeline|automated testing|integration testing|unit testing|end-to-end testing|' \
+                     r'smoke testing|regression testing|performance testing|load testing|stress testing|' \
+                     r'GitHub Actions|CircleCI|Jenkins|TravisCI|GitLab CI|Bamboo|TeamCity|Azure DevOps|' \
+                     r'AWS CodePipeline|Google Cloud Build|Drone CI|Concourse CI|Spinnaker|ArgoCD|Flux CD|' \
+                     r'artifact repository|build artifact|deployment target|release candidate|release train|' \
+                     r'canary deployment|blue-green deployment|rolling deployment|trunk-based development|' \
+                     r'feature flags|feature toggles|A/B testing|dark launching|progressive delivery|' \
+                     r'infrastructure as code|IaC|GitOps|DevOps|DevSecOps|shift left|' \
+                     r'build stage|test stage|deploy stage|release stage|promote|rollback|hotfix|' \
+                     r'CI/CD pipeline|workflow|job|step|task|action|trigger|webhook|' \
+                     r'build matrix|build cache|build agent|build runner|build server|' \
+                     r'code coverage|code quality|code scanning|static analysis|dynamic analysis|' \
+                     r'security scanning|vulnerability scanning|dependency scanning|SAST|DAST|' \
+                     r'approval gate|quality gate|deployment gate|manual approval|automated approval)\b', 
+                     r'<span class="odp-blue">\1</span>', text)
+    
+    # Git operations (blue for operations)
+    text = safe_highlight(r'\b(git clone|git pull|git push|git commit|git add|git merge|git rebase|' \
+                    r'git checkout|git branch|git tag|git stash|git reset|git fetch|git status|' \
+                    r'git log|git diff|git show|git remote|git config|git init|git blame|git reflog|' \
+                    r'pull request|merge request|feature branch|release branch|master branch|main branch|' \
+                    r'development branch|hotfix branch|bugfix branch|release candidate|tag|commit hash|SHA|' \
+                    r'git flow|git hooks|git submodule|gitignore|git bisect|git cherry-pick|git revert|' \
+                    r'git squash|git amend|git force push|git fork|git upstream|git origin|git HEAD|' \
+                    r'merge conflict|conflict resolution|git blame|git history|git commit message|' \
+                    r'git staging area|git index|git working tree|git repository|git remote repository|' \
+                    r'git local repository|git shallow clone|git bare repository|git worktree)\b', 
+                    r'<span class="odp-blue">\1</span>', text)
+    
+    # REST/GraphQL endpoints (blue for API endpoints)
+    text = safe_highlight(r'\b(/api/|/v1/|/v2/|/v3/|/rest/|/graphql|/gql|/swagger|/openapi|' \
+                   r'POST /|GET /|PUT /|DELETE /|PATCH /|OPTIONS /|HEAD /|CONNECT /|TRACE /|' \
+                   r'REST API|RESTful endpoint|RESTful service|RESTful architecture|REST resource|' \
+                   r'GraphQL query|GraphQL mutation|GraphQL subscription|GraphQL schema|GraphQL resolver|' \
+                   r'API route|API gateway|API proxy|API facade|API middleware|API controller|' \
+                   r'endpoint URL|API version|resource URL|resource identifier|resource representation|' \
+                   r'query parameter|path parameter|header parameter|form parameter|cookie parameter|' \
+                   r'request payload|request body|request header|request method|request URI|' \
+                   r'response data|response body|response header|response code|response status|' \
+                   r'API key|bearer token|OAuth token|JWT token|access token|refresh token|' \
+                   r'HATEOAS|hypermedia|content negotiation|media type|content type|' \
+                   r'rate limiting|throttling|pagination|filtering|sorting|projection|expansion|' \
+                   r'idempotent|stateless|cacheable|uniform interface|client-server|layered system)\b', 
+                   r'<span class="odp-blue">\1</span>', text)
+    
+    # Terminal commands and shell scripts (blue for operations)
+    text = safe_highlight(r'\b(cd|ls|mkdir|rm|cp|mv|touch|cat|echo|grep|sed|awk|find|chmod|chown|' \
+                       r'tar|zip|unzip|ssh|scp|rsync|curl|wget|bash|sh|./|sudo|apt|yum|brew|npm|' \
+                       r'yarn|pip|cron|systemctl|service|ps|top|kill|pkill|ifconfig|traceroute|nslookup|' \
+                       r'man|less|more|head|tail|sort|uniq|wc|diff|patch|ln|df|du|mount|umount|' \
+                       r'ping|netstat|ss|ip|iptables|ufw|nc|telnet|ftp|sftp|git|svn|docker|podman|' \
+                       r'python|python3|perl|ruby|node|java|javac|gcc|g\+\+|make|cmake|' \
+                       r'history|clear|exit|logout|shutdown|reboot|poweroff|passwd|useradd|userdel|' \
+                       r'groupadd|groupdel|chgrp|su|sudo|visudo|crontab|at|batch|bg|fg|jobs|' \
+                       r'source|export|alias|unalias|set|unset|env|printenv|xargs|tee|tr|cut|' \
+                       r'gzip|gunzip|bzip2|bunzip2|7z|7za|ar|ldd|ldconfig|strace|ltrace|' \
+                       r'journalctl|dmesg|lsof|lsblk|lspci|lsusb|lsmod|modprobe|insmod|rmmod)\b', 
+                       r'<span class="odp-blue">\1</span>', text)
+    
+    # Build tools and deployment scripts (blue for operations)
+    text = safe_highlight(r'\b(make|ant|maven|gradle|webpack|babel|gulp|grunt|terraform|ansible|chef|puppet|' \
+                 r'kubernetes|helm|kubectl|kustomize|skaffold|packer|vagrant|npm run|yarn build|' \
+                 r'dotnet build|dotnet publish|mvn package|gradle build|CI pipeline|CD workflow|' \
+                 r'bazel|buck|cargo build|cargo run|sbt|leiningen|rake|msbuild|xcodebuild|cmake|' \
+                 r'ninja|qmake|autoconf|automake|configure|makefile|dockerfile|docker-compose|' \
+                 r'jenkins|travis|circle ci|github actions|gitlab ci|azure pipelines|buildkite|' \
+                 r'argocd|flux|spinnaker|octopus deploy|capistrano|fabric|salt|cloudformation|' \
+                 r'pulumi|serverless|netlify|vercel|heroku|aws codedeploy|azure devops|' \
+                 r'continuous integration|continuous deployment|continuous delivery|infrastructure as code|' \
+                 r'configuration management|container orchestration|service mesh|blue-green deployment|' \
+                 r'canary deployment|rolling deployment|immutable infrastructure|gitops)\b', 
+                 r'<span class="odp-blue">\1</span>', text)
+    
+    # Database operations (blue for operations)
+    text = safe_highlight(r'\b(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|JOIN|INNER JOIN|' \
+                   r'LEFT JOIN|RIGHT JOIN|FULL JOIN|WHERE|GROUP BY|ORDER BY|HAVING|UNION|' \
+                   r'INDEX|PRIMARY KEY|FOREIGN KEY|CONSTRAINT|TRANSACTION|COMMIT|ROLLBACK|' \
+                   r'database query|SQL statement|NoSQL operation|aggregation pipeline|' \
+                   r'ACID transaction|database migration|MERGE|UPSERT|EXPLAIN|ANALYZE|EXECUTE|' \
+                   r'GRANT|REVOKE|VIEW|MATERIALIZED VIEW|STORED PROCEDURE|FUNCTION|TRIGGER|' \
+                   r'CASCADE|SET NULL|RESTRICT|NO ACTION|ON DELETE|ON UPDATE|REFERENCES|' \
+                   r'UNIQUE|NOT NULL|CHECK|DEFAULT|AUTO_INCREMENT|IDENTITY|SEQUENCE|' \
+                   r'SAVEPOINT|BEGIN TRANSACTION|START TRANSACTION|END TRANSACTION|' \
+                   r'ISOLATION LEVEL|READ COMMITTED|READ UNCOMMITTED|REPEATABLE READ|SERIALIZABLE|' \
+                   r'CURSOR|FETCH|DECLARE|PREPARE|EXECUTE IMMEDIATE|BIND VARIABLE|' \
+                   r'PARTITION|SHARDING|REPLICATION|BACKUP|RESTORE|VACUUM|ANALYZE|' \
+                   r'INDEX SCAN|TABLE SCAN|FULL SCAN|QUERY PLAN|EXECUTION PLAN|QUERY OPTIMIZATION|' \
+                   r'CONNECTION POOL|DATABASE LINK|FEDERATION|SCHEMA|NAMESPACE|COLLECTION|' \
+                   r'DOCUMENT|BSON|JSON|JSONB|BLOB|CLOB|TEXT|VARCHAR|INTEGER|NUMERIC|TIMESTAMP|' \
+                   r'UPSERT|MERGE|FIND|FINDONE|FINDMANY|INSERTONE|INSERTMANY|UPDATEONE|UPDATEMANY|DELETEONE|DELETEMANY)\b', 
+                   r'<span class="odp-blue">\1</span>', text)
+    
+    # Runtime methods and lifecycle hooks (blue for functions/methods)
+    text = safe_highlight(r'\b(addEventListener|removeEventListener|setTimeout|setInterval|clearTimeout|' \
+                     r'clearInterval|componentDidMount|componentWillUnmount|useEffect|useState|useContext|' \
+                     r'constructor|destructor|ngOnInit|ngOnDestroy|onMounted|beforeDestroy|middleware|' \
+                     r'beforeEach|afterEach|beforeAll|afterAll|init|dispose|@BeforeClass|@AfterClass|' \
+                     r'__construct|__destruct|@Component|@Injectable|@Controller|@RequestMapping|' \
+                     r'function\s+\w+|def\s+\w+|class\s+\w+|interface\s+\w+|method\s+\w+|' \
+                     r'render|componentDidUpdate|shouldComponentUpdate|getDerivedStateFromProps|getSnapshotBeforeUpdate|' \
+                     r'useMemo|useCallback|useRef|useReducer|useImperativeHandle|useLayoutEffect|useDebugValue|' \
+                     r'ngOnChanges|ngDoCheck|ngAfterContentInit|ngAfterContentChecked|ngAfterViewInit|ngAfterViewChecked|' \
+                     r'created|mounted|updated|beforeUpdate|activated|deactivated|errorCaptured|renderTracked|renderTriggered|' \
+                     r'setup|watch|computed|provide|inject|onBeforeMount|onMounted|onBeforeUpdate|onUpdated|onBeforeUnmount|onUnmounted|' \
+                     r'@PostConstruct|@PreDestroy|@Autowired|@Inject|@Service|@Repository|@Transactional|@Scheduled|' \
+                     r'__init__|__new__|__del__|__enter__|__exit__|__call__|__getattr__|__setattr__|__getitem__|__setitem__|' \
+                     r'@app.route|@blueprint.route|@before_request|@after_request|@errorhandler|@app.middleware|' \
+                     r'handleChange|handleSubmit|handleClick|handleInput|onChange|onClick|onSubmit|onFocus|onBlur|onKeyDown|onKeyUp|' \
+                     r'subscribe|unsubscribe|dispatch|getState|setState|forceUpdate|connect|mapStateToProps|mapDispatchToProps)\b', 
+                     r'<span class="odp-blue">\1</span>', text)
+    
+    # Code comments (brightBlack for secondary text)
+    text = safe_highlight(r'(//.*?$|/\*.*?\*/|#.*?$|--.*?$|<!--|-->|""".*?"""|\'\'\'.*?\'\'\')', 
+                          r'<span class="odp-brightBlack">\1</span>', text, flags=re.MULTILINE|re.DOTALL)
+    
+    # Complexity annotations (brightBlack for complexity notations)
+    text = safe_highlight(r'\b(O\(\d*n?(\s*log\s*n)?\)|Θ\(\d*n?(\s*log\s*n)?\)|Ω\(\d*n?(\s*log\s*n)?\)|' \
+                            r'O\(1\)|O\(n\)|O\(n²\)|O\(n\^2\)|O\(n\^3\)|O\(log n\)|O\(n log n\)|O\(2\^n\)|' \
+                            r'Θ\(n\)|Θ\(n²\)|Θ\(log n\)|Θ\(n log n\)|' \
+                            r'worst case|average case|best case|time complexity|space complexity|' \
+                            r'amortized time|amortized complexity)\b', 
+                            r'<span class="odp-brightBlack">\1</span>', text)
+    
+    # Documentation notes (brightBlack for secondary notes)
+    text = safe_highlight(r'(@param|@return|@throws|@exception|@see|@since|@version|@author|@deprecated|' \
+               r'@todo|@note|@example|@file|@class|@interface|@function|@method|' \
+               r'@memberof|@private|@public|@protected|@readonly|@type|@typedef|' \
+               r'@param \{[\w\|\[\]]+\}|@returns \{[\w\|\[\]]+\}|@throws \{[\w\|\[\]]+\}|' \
+               r'TODO:|FIXME:|NOTE:|WARNING:|HACK:|BUG:|XXX:|' \
+               r':param|:return|:rtype|:raises|:type|:meta|:cvar|:ivar|' \
+               r'\[(IMPORTANT|NOTE|TIP|WARNING|CAUTION|TODO)\])', 
+               r'<span class="odp-brightBlack">\1</span>', text)
+    
+    # Code metadata (brightBlack for secondary information)
+    text = safe_highlight(r'\b(v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?|version\s+\d+\.\d+\.\d+|' \
+                   r'@version\s+\d+\.\d+\.\d+|' \
+                   r'line \d+|at line \d+|on line \d+|from line \d+ to \d+|' \
+                   r'[Ll]ine \d+(-\d+)?( of | in )[\w\-./]+|' \
+                   r'copyright ©|Copyright ©|© \d{4}|' \
+                   r'MIT License|Apache License|GPL|GNU|BSD|' \
+                   r'last updated|last modified|created on|' \
+                   r'source:|ref:|reference:|see:|' \
+                   r'file size:|memory usage:|' \
+                   r'#pragma|#ifndef|#ifdef|#endif|#define|#include|#import|' \
+                   r'Deprecated since|Supported in|Requires|Dependencies|' \
+                   r'<summary>|</summary>|<remarks>|</remarks>)\b', 
+                   r'<span class="odp-brightBlack">\1</span>', text, flags=re.IGNORECASE)
+    
+    # Line numbers and references (brightBlack for line indicators)
+    text = safe_highlight(r'(\bL\d+\b|\bline \d+(-\d+)?\b|\blines \d+(-\d+)?\b|\bat \d+:\d+\b|' \
+               r'\b\w+\.(?:py|js|java|cpp|cs|rb|go|rs|php|html|css|tsx?|jsx?):\d+\b|' \
+               r'\b\w+\.(?:py|js|java|cpp|cs|rb|go|rs|php|html|css|tsx?|jsx?):\d+:\d+\b)', 
+               r'<span class="odp-brightBlack">\1</span>', text)
+    
+    # Currently executing code elements (brightBlue for active elements)
+    text = safe_highlight(r'\b(currently executing|active process|active thread|current instruction|' \
+                    r'current stack frame|execution point|program counter|instruction pointer|' \
+                    r'running job|now executing|currently processing|execution focus|' \
+                    r'active operation|active transaction|real-time execution|' \
+                    r'breakpoint hit|debugger paused|step into|step over|step out|' \
+                    r'runtime focus|execution context|execution flow|code path|control flow|' \
+                    r'current scope|current lexical environment|current event loop|' \
+                    r'active request handling|active computation|thread of execution)\b', 
+                    r'<span class="odp-brightBlue">\1</span>', text)
+    
+    # Main threads and primary call paths (brightBlue for primary processes)
+    text = safe_highlight(r'\b(main thread|primary thread|UI thread|event loop|main process|' \
+                  r'critical path|hot path|primary call path|main execution path|' \
+                  r'request pipeline|core logic|central algorithm|primary workflow|' \
+                  r'main program flow|essential operation|critical section|master thread|' \
+                  r'dispatch queue|render thread|animation thread|parent process|' \
+                  r'primary routine|key function|main entry point|program entry|' \
+                  r'application lifecycle|critical execution path)\b', 
+                  r'<span class="odp-brightBlue">\1</span>', text)
+    
+    # Interactive elements (brightBlue for focused UI elements)
+    text = safe_highlight(r'\b(active link|current selection|focused element|highlighted item|' \
+                          r'selected option|current tab|active view|current panel|' \
+                          r'focused input|selected text|active window|current dialog|' \
+                          r'modal focus|keyboard focus|hover state|active state|focus state|' \
+                          r'current screen|selected row|active menu|current form field|' \
+                          r'clicked button|pressed key|dragged element|active navigation|' \
+                          r'active filter|current sort|expanded section|focused component)\b', 
+                          r'<span class="odp-brightBlue">\1</span>', text)
+    
+    # Runtime states (brightBlue for execution states)
+    text = safe_highlight(r'\b(runtime state|execution state|active configuration|current mode|' \
+                    r'process state|thread state|operational mode|execution mode|running state|' \
+                    r'active profile|current environment|deployed instance|live deployment|' \
+                    r'production deployment|active session|current transaction|open connection|' \
+                    r'established session|active listener|hot reload|live reloading|live editing|' \
+                    r'runtime modification|dynamic reconfiguration|just-in-time compilation|' \
+                    r'active binding|current mount point|active route|current breakpoint)\b', 
+                    r'<span class="odp-brightBlue">\1</span>', text)
+    
+    # Active state keywords (brightBlue for state indicators)
+    text = safe_highlight(r'\b(active|executing|running|focused|selected|current|processing|live|' \
+                   r'ongoing|highlighted|in progress|in execution|now|presently|at this moment|' \
+                   r'operational|connected|established|mounted|rendered|instantiated|initialized|' \
+                   r'ready|responsive|real-time|concurrent|parallel)\b', 
+                   r'<span class="odp-brightBlue">\1</span>', text)
+    
+    # Special characters and escape sequences (brightCyan for special syntax)
+    text = safe_highlight(r'(\\n|\\r|\\t|\\b|\\f|\\v|\\0|\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|' \
+                   r'\\[\'\"\\]|\$\{.*?\}|`.*?`|\$\(.*?\)|&amp;|&lt;|&gt;|&quot;|&apos;|&#\d+;)', 
+                   r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Regular expression patterns (brightCyan for regex)
+    text = safe_highlight(r'(/\^?.*?[^\\]\$/|/\^?.*?\$/|' \
+                    r'\[\^?[^\]]*\]|\(\?:[^)]*\)|\(\?<[^>]+>[^)]*\)|\(\?=[^)]*\)|\(\?![^)]*\)|' \
+                    r'\.\*|\.\+|\.\?|\d+\{,\d+\}|\d+\{\d+,\}|\d+\{\d+,\d+\}|' \
+                    r'\\d|\\w|\\s|\\b|\\W|\\S|\\D|\\B|\\A|\\Z|\\z|\\G|' \
+                    r'\^|\$|\||\?|\*|\+|\\|\(|\)|\{|\}|\[|\])', 
+                    r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Operators (brightCyan for operations)
+    text = safe_highlight(r'(\+|-|\*|/|%|\^|&|\||~|!|=|<|>|\?|:|;|,|\.|' \
+               r'\+=|-=|\*=|/=|%=|\^=|&=|\|=|<<=|>>=|={1,3}|!=|!==|<=|>=|<>|' \
+               r'&&|\|\||>>|<<|\+\+|--|=>|\*\*|//|::|->|@|' \
+               r'\.{1,3}|\?\?|!=|!==|<=|>=|\?:|=~|!~|=&gt;|&lt;=&gt;|&amp;&amp;|\|\||&lt;&lt;|&gt;&gt;)', 
+               r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Pointer dereferencing and memory operations (brightCyan for pointer operations)
+    text = safe_highlight(r'(\*\w+|->\w+|&\w+|::\*\w+|\w+\[\d+\]|\w+->\w+|\w+\.\*\w+|' \
+                 r'malloc\(|free\(|new\s+\w+|delete\s+\w+|' \
+                 r'reference to|dereference|pointer to|address of|memory location|' \
+                 r'null pointer|dangling pointer|void pointer|function pointer|' \
+                 r'stack pointer|heap allocation|memory leak|buffer overflow)', 
+                 r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Bitwise operations (brightCyan for bit manipulation)
+    text = safe_highlight(r'\b(bitwise AND|bitwise OR|bitwise XOR|bitwise NOT|bit shift|left shift|right shift|' \
+                 r'bit manipulation|bit masking|bit field|bit flag|bitmask|bit pattern|bit twiddling|' \
+                 r'bit counting|population count|hamming weight|bit extraction|bit insertion|bit rotation|' \
+                 r'bit reversal|bit scanning|leading zeros|trailing zeros|' \
+                 r'AND operation|OR operation|XOR operation|NOT operation)\b', 
+                 r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Mathematical operations (brightCyan for math operations)
+    text = safe_highlight(r'\b(addition|subtraction|multiplication|division|modulo|exponentiation|' \
+              r'square root|cube root|logarithm|natural log|factorial|summation|product|' \
+              r'derivative|integral|differentiation|integration|vector|matrix|determinant|' \
+              r'dot product|cross product|eigenvalue|eigenvector|transform|rotation|' \
+              r'linear algebra|calculus|discrete math|number theory|graph theory)\b', 
+              r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # State transitions (brightCyan for state changes)
+    text = safe_highlight(r'\b(transition|state change|state machine|finite automaton|' \
+                       r'transition function|transition matrix|transition table|state diagram|' \
+                       r'from state|to state|current state|next state|previous state|initial state|' \
+                       r'final state|accepting state|error state|' \
+                       r'state transition|edge|directed edge|conditional transition|guarded transition|' \
+                       r'event-driven transition|epsilon transition|token|lexeme|parser state)\b', 
+                       r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Pipeline operators (brightCyan for data flow)
+    text = safe_highlight(r'\b(pipeline|pipe|filter|map|reduce|transform|stream|flow|' \
+                  r'data flow|control flow|event flow|message passing|forwarding|routing|' \
+                  r'producer|consumer|publisher|subscriber|worker|orchestrator|coordinator|' \
+                  r'message bus|event bus|broker|queue|topic|channel|port|' \
+                  r'stdin|stdout|stderr|redirect|input redirection|output redirection)\b', 
+                  r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Logical gates and boolean operations (brightCyan for logic)
+    text = safe_highlight(r'\b(AND gate|OR gate|NOT gate|XOR gate|NAND gate|NOR gate|XNOR gate|' \
+                 r'logical AND|logical OR|logical NOT|logical XOR|logical NAND|logical NOR|' \
+                 r'boolean algebra|boolean logic|boolean expression|boolean operation|truth table|' \
+                 r'conjunction|disjunction|negation|implication|biconditional|tautology|' \
+                 r'AND operator|OR operator|NOT operator|XOR operator|logical operator)\b', 
+                 r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Query operators (brightCyan for database/search operations)
+    text = safe_highlight(r'\b(filter by|sort by|group by|order by|aggregate by|join on|left join|right join|' \
+               r'inner join|outer join|full join|select from|insert into|update where|delete from|' \
+               r'where clause|having clause|distinct|union|intersect|except|' \
+               r'query string|search term|filter criteria|sorting criteria|pagination|' \
+               r'limit|offset|count|sum|average|min|max|index scan|table scan)\b', 
+               r'<span class="odp-brightCyan">\1</span>', text)
+    
+    # Success messages (brightGreen for positive feedback)
+    text = safe_highlight(r'\b(successfully|succeeded|complete|completed|passed|validated|verified|' \
+                      r'correct|correctly|fixed|resolved|solved|successful|success|ok|okay|' \
+                      r'approved|valid|confirmed|accepted|implemented|accomplished|achieved|' \
+                      r'done|finished|ready|available|enabled|activated|working correctly|' \
+                      r'working as expected|functioning correctly|all tests passing|' \
+                      r'no errors|no warnings|no issues|problem solved|issue resolved)\b', 
+                      r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Test results (brightGreen for passing tests)
+    text = safe_highlight(r'\b(test passed|passing test|tests passing|all tests pass|test suite passed|' \
+                  r'build passing|CI passing|green build|integration test passed|unit test passed|' \
+                  r'regression test passed|smoke test passed|test coverage|coverage increased|' \
+                  r'assertions passed|validation passed|verification passed|quality gate passed|' \
+                  r'code review passed|quality check passed|linting passed|formatting passed|' \
+                  r'type checking passed|zero defects|zero bugs|no regressions)\b', 
+                  r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Validated data (brightGreen for valid data)
+    text = safe_highlight(r'\b(valid input|valid data|validated data|sanitized input|escaped data|' \
+                    r'clean data|well-formed|well formed|proper format|correct format|' \
+                    r'properly formatted|valid format|valid syntax|valid schema|conforming to spec|' \
+                    r'meeting requirements|matched pattern|passed validation|integrity check passed|' \
+                    r'consistency check passed|correctly formatted|correctly structured|' \
+                    r'properly escaped|properly sanitized|properly validated)\b', 
+                    r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Successful operations (brightGreen for completed actions)
+    text = safe_highlight(r'\b(operation successful|task completed|action performed|request processed|' \
+                    r'transaction committed|data saved|record created|record updated|record deleted|' \
+                    r'file uploaded|file downloaded|message sent|email delivered|payment processed|' \
+                    r'user registered|user authenticated|login successful|logout successful|' \
+                    r'access granted|permission granted|authorization successful|' \
+                    r'synchronization complete|migration complete|deployment successful|' \
+                    r'installation complete|configuration saved|settings applied)\b', 
+                    r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Optimization gains (brightGreen for improvements)
+    text = safe_highlight(r'\b(optimized|improved|enhanced|faster|quicker|speedup|accelerated|' \
+                        r'performance boost|efficiency gain|reduced latency|reduced memory usage|' \
+                        r'reduced CPU usage|reduced resource consumption|reduced load time|' \
+                        r'improved throughput|improved response time|improved scalability|' \
+                        r'better performance|higher throughput|lower latency|smaller footprint|' \
+                        r'more efficient|more scalable|more responsive|more reliable)\b', 
+                        r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Performance improvements (brightGreen for performance metrics)
+    text = safe_highlight(r'\b(performance improvement|latency reduction|memory reduction|' \
+                              r'CPU reduction|load time decreased|response time decreased|' \
+                              r'throughput increased|requests per second increased|' \
+                              r'transactions per second increased|render time decreased|' \
+                              r'parse time decreased|compile time decreased|startup time decreased|' \
+                              r'execution time decreased|processing time decreased|' \
+                              r'time complexity reduced|space complexity reduced|' \
+                              r'algorithmic improvement|complexity reduction|big O improved)\b', 
+                              r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Positive metrics (brightGreen for good measurements)
+    text = safe_highlight(r'\b(high score|high availability|high throughput|high performance|' \
+                      r'high accuracy|high precision|high recall|high F1 score|' \
+                      r'low error rate|low defect rate|low latency|low response time|' \
+                      r'increased uptime|increased conversion|increased engagement|' \
+                      r'increased retention|increased adoption|increased usage|' \
+                      r'above threshold|exceeds expectations|exceeds requirements|' \
+                      r'meets SLA|within budget|under budget|ahead of schedule)\b', 
+                      r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Resource efficiencies (brightGreen for resource optimizations)
+    text = safe_highlight(r'\b(resource efficient|memory efficient|CPU efficient|' \
+                           r'bandwidth efficient|storage efficient|energy efficient|' \
+                           r'reduced resource usage|reduced memory footprint|reduced CPU cycles|' \
+                           r'reduced bandwidth consumption|reduced storage requirements|' \
+                           r'reduced power consumption|optimal resource utilization|' \
+                           r'optimal memory usage|optimal CPU usage|balanced load|' \
+                           r'efficient caching|efficient indexing|efficient algorithm|' \
+                           r'lightweight solution|minimal overhead|minimal footprint)\b', 
+                           r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Diff additions (brightGreen for added content)
+    text = safe_highlight(r'(\+\+\+.*|\+.*|added line|new content|inserted|addition|newly added|' \
+                    r'new feature|new functionality|new capability|new method|new function|' \
+                    r'new class|new module|new component|new service|new endpoint|' \
+                    r'new API|new route|new view|new template|new style|new test|' \
+                    r'new dependency|new package|new library|new framework)\b', 
+                    r'<span class="odp-brightGreen">\1</span>', text)
+    
+    # Language keywords (brightPurple for reserved words)
+    text = safe_highlight(r'\b(if|else|for|while|do|switch|case|break|continue|return|yield|async|await|' \
+                       r'try|catch|finally|throw|throws|new|this|super|extends|implements|interface|' \
+                       r'class|enum|struct|namespace|package|import|module|export|require|include|' \
+                       r'public|private|protected|static|final|const|let|var|function|def|fn|fun|' \
+                       r'method|property|get|set|void|int|float|double|string|boolean|bool|null|nil|' \
+                       r'undefined|true|false|typedef|extern|volatile|register|using|lambda|goto)\b', 
+                       r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Decorators (brightPurple for meta-annotations)
+    text = safe_highlight(r'(@\w+(?:\.\w+)*(?:\([^)]*\))?|' \
+                r'#\[.*?\]|' \
+                r'__\w+__|\[\[.*?\]\]|' \
+                r'@decorator|@classmethod|@staticmethod|@property|@overload|@override|' \
+                r'@deprecated|@experimental|@api|@internal|@public|@private|@inject|' \
+                r'@autowired|@component|@service|@controller|@repository|@entity|' \
+                r'@transactional|@async|@synchronized|@volatile|@tailrec|@lazy|' \
+                r'@memoized|@cached|@readonly|@virtual|@abstract|@sealed|@required)', 
+                r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Special directives (brightPurple for compiler instructions)
+    text = safe_highlight(r'(#pragma|#define|#undef|#if|#ifdef|#ifndef|#else|#elif|#endif|#error|#warning|' \
+                        r'#line|#include|#import|#using|' \
+                        r'@directive|@compiler|use strict|use warnings|strict mode|' \
+                        r'__asm|__attribute__|__declspec|__forceinline|__restrict|__inline|' \
+                        r'"use strict"|\'use strict\'|\'use warnings\'|' \
+                        r'#\!.*?/bin/|#\!.*?/usr/bin/|#\!.*?/env\s+\w+)', 
+                        r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Advanced language features (brightPurple for advanced concepts)
+    text = safe_highlight(r'\b(generics|templates|traits|mixins|protocols|macros|reflection|introspection|' \
+                       r'metaprogramming|duck typing|dynamic typing|type inference|type erasure|' \
+                       r'pattern matching|destructuring|spread operator|rest parameter|variadic templates|' \
+                       r'varargs|polymorphism|overloading|overriding|covariance|contravariance|' \
+                       r'higher-order functions|closures|currying|partial application|type classes|' \
+                       r'monads|functors|applicatives|lazy evaluation|eager evaluation|' \
+                       r'tail call optimization|memoization|virtual dispatch|multiple dispatch)\b', 
+                       r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Metaprogramming concepts (brightPurple for code generation)
+    text = safe_highlight(r'\b(code generation|eval|reflection|introspection|type reflection|' \
+                     r'runtime type information|RTTI|runtime reflection|mirror API|meta object|' \
+                     r'metaclass|metaobject|prototype|monkey patching|aspect-oriented|AOP|' \
+                     r'bytecode manipulation|bytecode generation|dynamic code evaluation|' \
+                     r'compiler API|AST manipulation|syntax tree|source transformation|' \
+                     r'macros|macro expansion|compile-time evaluation|partial evaluation|' \
+                     r'staged compilation|template metaprogramming|constexpr|constant expression|' \
+                     r'annotations processing|code weaving|proxies|dynamic proxies)\b', 
+                     r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Reflection capabilities (brightPurple for self-inspection)
+    text = safe_highlight(r'\b(reflect|reflection|Type|typeof|instanceof|getClass|isInstance|getMethods|' \
+                r'getFields|getConstructors|getInterfaces|getSuperclass|getAnnotations|' \
+                r'getMemberType|getDeclaredMethods|getDeclaredFields|getModifiers|' \
+                r'isPublic|isPrivate|isProtected|isStatic|isFinal|isAbstract|isInterface|' \
+                r'isEnum|isPrimitive|isArray|getComponentType|newInstance|invoke|' \
+                r'get|set|class literal|class object|class reference|type descriptor|' \
+                r'method reference|field reference|constructor reference)\b', 
+                r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Compiler directives (brightPurple for build instructions)
+    text = safe_highlight(r'\b(inline|noinline|forceinline|noreturn|nodiscard|fallthrough|likely|unlikely|' \
+                         r'packed|aligned|deprecated|warning|error|optimize|unroll|vectorize|' \
+                         r'restrict|register|extern|volatile|static|thread_local|constexpr|consteval|' \
+                         r'dllimport|dllexport|visibility|section|weak|strong|pure|impure|' \
+                         r'hot|cold|used|unused|constructor|destructor|malloc|format|' \
+                         r'target|tune|arch|feature|pragma once|pragma pack|pragma optimize)\b', 
+                         r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Preprocessor commands (brightPurple for preprocessing)
+    text = safe_highlight(r'(#include\s+["<].*?[">]|#define\s+\w+(\(.*?\))?.*?|' \
+                           r'#undef\s+\w+|#if\s+.*?|#ifdef\s+\w+|#ifndef\s+\w+|#else|#elif\s+.*?|#endif|' \
+                           r'#error\s+.*?|#warning\s+.*?|#line\s+\d+|#region|#endregion|' \
+                           r'#import\s+["<].*?[">]|#pragma\s+.*?|#using\s+.*?)', 
+                           r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Build configurations (brightPurple for build settings)
+    text = safe_highlight(r'\b(DEBUG|RELEASE|TRACE|ASSERT|PROFILE|TEST|PRODUCTION|DEVELOPMENT|' \
+                   r'CONFIG|CONFIGURATION|BUILD_TYPE|PLATFORM|TARGET|ARCH|ARCHITECTURE|' \
+                   r'x86|x64|ARM|ARM64|INTEL|AMD|APPLE|WINDOWS|LINUX|UNIX|POSIX|ANDROID|IOS|' \
+                   r'SIMULATOR|EMULATOR|NATIVE|MANAGED|JIT|AOT|INTERPRETER|COMPILER|' \
+                   r'OPTIMIZATION|OPTIMIZE|O0|O1|O2|O3|Os|Oz|Ofast|CMAKE_BUILD_TYPE|' \
+                   r'MAKEFILE|CFLAGS|CXXFLAGS|LDFLAGS|LIBS|INCLUDES|DEPENDENCIES)\b', 
+                   r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Annotations (brightPurple for metadata)
+    text = safe_highlight(r'(\[Assembly:.*?\]|\[Attribute:.*?\]|\[Serializable\]|\[Obsolete\]|' \
+                 r'\[WebMethod\]|\[WebService\]|\[Route\]|\[HttpGet\]|\[HttpPost\]|' \
+                 r'\[Authorize\]|\[AllowAnonymous\]|\[Validate\]|\[Required\]|\[StringLength\]|' \
+                 r'\[Remote\]|\[Display\]|\[EditorFor\]|\[Key\]|\[ForeignKey\]|\[Table\]|\[Column\]|' \
+                 r'\[JsonProperty\]|\[JsonIgnore\]|\[XmlElement\]|\[XmlAttribute\]|\[XmlIgnore\]|' \
+                 r'\[Conditional\]|\[Flags\]|\[ThreadStatic\]|\[ThreadSafe\]|\[MethodImpl\]|' \
+                 r'\[StructLayout\]|\[DllImport\]|\[MTAThread\]|\[STAThread\])', 
+                 r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Transformers and code generators (brightPurple for code transformation)
+    text = safe_highlight(r'\b(transformer|code generator|template engine|transpiler|transcompiler|' \
+                  r'source-to-source compiler|byte-code generator|byte-code manipulator|' \
+                  r'AST transformer|syntax tree transformer|macro processor|preprocessor|' \
+                  r'aspect weaver|annotation processor|bytecode enhancer|bytecode instrumentation|' \
+                  r'source code generation|auto-generated code|scaffolding|boilerplate generation|' \
+                  r'code synthesis|program synthesis|automatic programming|generative programming|' \
+                  r'model-driven development|domain-specific language|DSL|template instantiation)\b', 
+                  r'<span class="odp-brightPurple">\1</span>', text)
+    
+    # Error messages (brightRed for errors)
+    text = safe_highlight(r'\b(error|exception|failed|failure|invalid|incorrect|wrong|bug|defect|issue|' \
+                    r'problem|crash|fault|mistake|malfunction|critical|severe|fatal|broken|corrupt|' \
+                    r'unexpected|unhandled|unrecognized|missing|not found|undefined|null reference|' \
+                    r'unable to|cannot|could not|compilation error|runtime error|syntax error|' \
+                    r'type error|reference error|logic error|assertion failed|stack overflow|' \
+                    r'out of memory|segmentation fault|null pointer|access violation)\b', 
+                    r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Exceptions and error states (brightRed for exceptions)
+    text = safe_highlight(r'\b(Exception|Error|Throwable|RuntimeException|IOException|FileNotFoundException|' \
+                r'NullPointerException|IndexOutOfBoundsException|IllegalArgumentException|' \
+                r'UnsupportedOperationException|ClassNotFoundException|SecurityException|' \
+                r'try-catch|throw|throws|raise|rescue|catch|finally|except|handle exception|' \
+                r'error handling|error recovery|fallback|try-except|try-finally|on error|' \
+                r'error state|error condition|error case|error path|error propagation)\b', 
+                r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Failures and bugs (brightRed for failures)
+    text = safe_highlight(r'\b(failure|failed test|test failure|edge case|corner case|regression|' \
+              r'bug|defect|issue|glitch|flaw|fault|problem|malfunction|regression|' \
+              r'known issue|known bug|reported bug|confirmed bug|reproducible bug|' \
+              r'intermittent bug|hard-to-reproduce|flaky test|brittle test|' \
+              r'failing build|build failure|compile error|runtime error|panic|abort)\b', 
+              r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Vulnerabilities and security threats (brightRed for security issues)
+    text = safe_highlight(r'\b(vulnerability|security hole|security flaw|exploit|attack vector|' \
+                     r'SQL injection|XSS|cross-site scripting|CSRF|cross-site request forgery|' \
+                     r'code injection|shell injection|command injection|path traversal|SSRF|' \
+                     r'directory traversal|insecure direct object reference|IDOR|authentication bypass|' \
+                     r'authorization bypass|privilege escalation|information disclosure|data leak|' \
+                     r'buffer overflow|format string|integer overflow|race condition|TOCTOU|' \
+                     r'side-channel attack|timing attack|man-in-the-middle|MITM|CVE|zero-day)\b', 
+                     r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Deprecated features (brightRed for deprecated elements)
+    text = safe_highlight(r'\b(deprecated|obsolete|legacy|no longer supported|removed in|will be removed|' \
+                r'use instead|replaced by|superseded by|outdated|ancient|unsupported|' \
+                r'end-of-life|EOL|sunset|retired|discontinued|phased out|marked for removal|' \
+                r'pending deprecation|officially deprecated|soft deprecated|hard deprecated|' \
+                r'backward compatibility|backwards compatibility|breaking change)\b', 
+                r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Concurrency issues (brightRed for threading problems)
+    text = safe_highlight(r'\b(race condition|deadlock|livelock|starvation|thread safety|' \
+                        r'data race|thread interference|atomic operation|non-atomic|' \
+                        r'concurrent modification|concurrent access|shared state|mutual exclusion|' \
+                        r'lock contention|priority inversion|thread leak|context switch|' \
+                        r'inconsistent state|thread dump|blocked thread|hung thread|' \
+                        r'thread pool exhaustion|executor shutdown|synchronization issue)\b', 
+                        r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Diff removals (brightRed for removed content)
+    text = safe_highlight(r'(-{3}.*|-.*|removed line|deleted content|removed|deletion|removed code|' \
+                  r'removed feature|removed functionality|removed capability|removed method|' \
+                  r'removed function|removed class|removed module|removed component|' \
+                  r'removed service|removed endpoint|removed API|removed route|removed view|' \
+                  r'removed template|removed style|removed test|removed dependency)\b', 
+                  r'<span class="odp-brightRed">\1</span>', text)
+    
+    # Core concepts (brightWhite for important text)
+    core_concepts = r'\b(algorithm|paradigm|architecture|principle|pattern|concept|methodology|' \
+                   r'approach|technique|strategy|best practice|convention|standard|specification|' \
+                   r'protocol|rule|guideline|recommendation|framework|system|structure|' \
+                   r'foundation|fundamental|essential|critical|key aspect|crucial|vital|' \
+                   r'central idea|core functionality|primary concern|main feature|' \
+                   r'basic operation|standard practice|common pattern|universal principle)\b'
+    text = safe_highlight(core_concepts, r'<span class="odp-brightWhite">\1</span>', text)
+    
+    # Key principles (brightWhite for principles)
+    key_principles = r'\b(DRY|Don\'t Repeat Yourself|SOLID|single responsibility|open-closed|' \
+                    r'Liskov substitution|interface segregation|dependency inversion|' \
+                    r'separation of concerns|law of Demeter|YAGNI|KISS|principle of least surprise|' \
+                    r'principle of least privilege|encapsulation|abstraction|inheritance|' \
+                    r'polymorphism|composition over inheritance|convention over configuration|' \
+                    r'fail fast|defensive programming|offensive programming|clean code|' \
+                    r'code quality|maintainability|readability|testability|scalability|' \
+                    r'modularity|cohesion|coupling|reusability|extensibility|flexibility)\b'
+    text = safe_highlight(key_principles, r'<span class="odp-brightWhite">\1</span>', text)
+    
+    # Algorithm names (brightWhite for algorithms)
+    algorithm_names = r'\b(binary search|linear search|depth-first search|DFS|breadth-first search|BFS|' \
+                     r'backtracking|dynamic programming|greedy algorithm|divide and conquer|' \
+                     r'recursion|memoization|sorting algorithm|quicksort|mergesort|heapsort|' \
+                     r'insertion sort|selection sort|bubble sort|radix sort|counting sort|' \
+                     r'topological sort|graph algorithm|shortest path|Dijkstra\'s algorithm|' \
+                     r'Bellman-Ford|A\* search|minimum spanning tree|Kruskal\'s algorithm|' \
+                     r'Prim\'s algorithm|union-find|disjoint set|hashing|hash table|' \
+                     r'bloom filter|trie|suffix tree|B-tree|red-black tree|AVL tree|' \
+                     r'binary heap|priority queue|sliding window|two pointers|fast and slow pointers)\b'
+    text = safe_highlight(algorithm_names, r'<span class="odp-brightWhite">\1</span>', text)
+    
+    # Paradigm names (brightWhite for programming paradigms)
+    paradigm_names = r'\b(object-oriented programming|OOP|functional programming|procedural programming|' \
+                    r'imperative programming|declarative programming|event-driven programming|' \
+                    r'aspect-oriented programming|data-oriented design|component-based|' \
+                    r'service-oriented architecture|SOA|microservices|serverless|' \
+                    r'reactive programming|concurrent programming|parallel programming|' \
+                    r'asynchronous programming|synchronous programming|stream processing|' \
+                    r'batch processing|message-driven|command query responsibility segregation|CQRS|' \
+                    r'event sourcing|domain-driven design|DDD|test-driven development|TDD|' \
+                    r'behavior-driven development|BDD|model-view-controller|MVC|MVVM|MVP)\b'
+    text = safe_highlight(paradigm_names, r'<span class="odp-brightWhite">\1</span>', text)
+    
+    # Function parameters (brightYellow for parameters)
+    function_parameters = r'\b(param|parameter|arg|argument|option|flag|switch|config|' \
+                         r'configuration|setting|property|attribute|field|variable|prop|' \
+                         r'input|output|value|default value|default|required parameter|' \
+                         r'optional parameter|named parameter|positional parameter|' \
+                         r'rest parameter|variadic parameter|spread parameter|' \
+                         r'destructured parameter|typed parameter|generic parameter|' \
+                         r'callback parameter|function parameter|object parameter|' \
+                         r'array parameter|boolean parameter|string parameter|number parameter)\b'
+    text = safe_highlight(function_parameters, r'<span class="odp-brightYellow">\1</span>', text)
+    
+    # Method arguments (brightYellow for arguments)
+    method_arguments = r'(\(\s*[\w\s,]*\s*\)|function\s*\(\s*[\w\s,]*\s*\)|def\s+\w+\s*\(\s*[\w\s,]*\s*\)|' \
+                      r'method\s*\(\s*[\w\s,]*\s*\)|lambda\s+[\w\s,]*\s*:|' \
+                      r'\(\s*\w+\s*:\s*\w+\s*\)|\(\s*\w+\s*=\s*[^,)]+\s*\)|' \
+                      r'\b\w+\s*=\s*[^,)]+(?=[,)])|' \
+                      r'@\w+\(\s*[\w\s=,\'\"]*\s*\))'
+    text = safe_highlight(method_arguments, r'<span class="odp-brightYellow">\1</span>', text)
+    
+    # Configuration options (brightYellow for config)
+    config_options = r'\b(config|configuration|settings|options|preferences|flags|switches|' \
+                    r'parameters|arguments|properties|attributes|environment variable|env var|' \
+                    r'config file|configuration file|settings file|properties file|' \
+                    r'\.env|\.config|\.ini|\.json|\.yaml|\.yml|\.xml|\.properties|' \
+                    r'command-line option|CLI option|CLI argument|system property|' \
+                    r'app setting|application setting|user preference|default setting|' \
+                    r'override|fallback|config key|config value|config pair|' \
+                    r'feature flag|feature toggle|A/B test|experiment)\b'
+    text = safe_highlight(config_options, r'<span class="odp-brightYellow">\1</span>', text)
+    
+    # Environment variables (brightYellow for environment)
+    env_variables = r'\b(ENV|ENVIRONMENT|NODE_ENV|PRODUCTION|DEVELOPMENT|STAGING|TEST|DEBUG|' \
+                   r'API_KEY|SECRET_KEY|ACCESS_TOKEN|CLIENT_ID|CLIENT_SECRET|APP_ID|APP_SECRET|' \
+                   r'DATABASE_URL|DB_HOST|DB_USER|DB_PASSWORD|DB_NAME|DB_PORT|' \
+                   r'PORT|HOST|HOSTNAME|IP|URL|BASE_URL|API_URL|ENDPOINT|' \
+                   r'PATH|HOME|USER|USERNAME|PWD|TEMP|TMP|SHELL|' \
+                   r'LOG_LEVEL|VERBOSE|QUIET|NO_COLOR|FORCE_COLOR|' \
+                   r'AWS_|AZURE_|GOOGLE_|GITHUB_|NPM_|DOCKER_|KUBERNETES_|K8S_)\b'
+    text = safe_highlight(env_variables, r'<span class="odp-brightYellow">\1</span>', text)
+
+    # Execution pointers (cursorColor for execution points)
+    execution_pointers = r'\b(cursor|pointer|insertion point|caret|selection|highlight|' \
+                        r'breakpoint|watchpoint|tracepoint|conditional breakpoint|' \
+                        r'step over|step into|step out|continue execution|pause execution|' \
+                        r'program counter|instruction pointer|execution pointer|' \
+                        r'current line|active line|execution line|current statement|' \
+                        r'next instruction|previous instruction|call stack|stack frame|' \
+                        r'stack trace|current frame|selected frame|memory address|' \
+                        r'memory inspection|memory dump|memory view|register view|' \
+                        r'variable inspection|watch expression|evaluate expression)\b'
+    text = safe_highlight(execution_pointers, r'<span class="odp-cursorColor">\1</span>', text)
+    
+    # Data transformations (cyan for transformations)
+    data_transformations = r'\b(transform|convert|parse|format|serialize|deserialize|encode|decode|' \
+                          r'encrypt|decrypt|hash|sign|validate|normalize|canonicalize|escape|unescape|' \
+                          r'sanitize|clean|filter|map|reduce|fold|flatMap|flatten|' \
+                          r'collect|stream|sort|order|group|aggregate|accumulate|' \
+                          r'extract|project|select|reject|exclude|omit|pick|pluck|' \
+                          r'merge|combine|compose|pipe|chain|link|connect|join|split|' \
+                          r'slice|splice|chunk|batch|window|buffer|pad|trim|truncate)\b'
+    text = safe_highlight(data_transformations, r'<span class="odp-cyan">\1</span>', text)
+    
+    # ETL processes (cyan for ETL)
+    etl_processes = r'\b(extract|transform|load|ETL|data pipeline|data flow|data integration|' \
+                   r'data migration|data conversion|data transfer|data movement|' \
+                   r'source system|target system|upstream|downstream|' \
+                   r'batch process|batch job|stream processing|real-time processing|' \
+                   r'data extraction|data transformation|data loading|' \
+                   r'data cleansing|data enrichment|data validation|' \
+                   r'data aggregation|data summarization|data normalization|' \
+                   r'data warehousing|data lake|data mart|staging area)\b'
+    text = safe_highlight(etl_processes, r'<span class="odp-cyan">\1</span>', text)
+    
+    # State mutations (cyan for state changes)
+    state_mutations = r'\b(mutate|mutation|change state|state change|update state|modify state|' \
+                     r'set state|reset state|clear state|initialize state|' \
+                     r'state transition|state machine|finite state machine|FSM|' \
+                     r'reducer|action|dispatch|store|immutable update|deep copy|' \
+                     r'shallow copy|clone|assign|merge|spread|destructure|' \
+                     r'side effect|pure function|impure function|idempotent|' \
+                     r'transaction|commit|rollback|savepoint|atomic operation|' \
+                     r'optimistic update|pessimistic update|concurrent modification)\b'
+    text = safe_highlight(state_mutations, r'<span class="odp-cyan">\1</span>', text)
+    
+    # System transitions (cyan for transitions)
+    system_transitions = r'\b(boot|startup|shutdown|restart|reboot|reload|refresh|' \
+                        r'initialize|init|start|stop|pause|resume|suspend|hibernate|' \
+                        r'activate|deactivate|enable|disable|toggle|switch|' \
+                        r'open|close|connect|disconnect|attach|detach|mount|unmount|' \
+                        r'register|unregister|subscribe|unsubscribe|listen|unlisten|' \
+                        r'bind|unbind|link|unlink|compile|build|deploy|publish|' \
+                        r'migrate|upgrade|downgrade|rollback|scale up|scale down)\b'
+    text = safe_highlight(system_transitions, r'<span class="odp-cyan">\1</span>', text)
+    
+    # General explanations (foreground for standard text)
+    general_explanations = r'\b(explanation|description|summary|overview|introduction|background|' \
+                          r'context|details|information|clarification|elaboration|note|remark|' \
+                          r'example|instance|scenario|case study|illustration|demonstration|' \
+                          r'definition|meaning|interpretation|understanding|analysis|' \
+                          r'breakdown|walkthrough|step-by-step|procedure|process|mechanism|' \
+                          r'how it works|underlying concept|basic idea|intuition|analogy|' \
+                          r'comparison|contrast|difference|similarity|relationship|interaction)\b'
+    text = safe_highlight(general_explanations, r'<span class="odp-foreground">\1</span>', text)
+    
+    # Algorithm descriptions (foreground for algorithm text)
+    algorithm_descriptions = r'\b(algorithm description|pseudocode|high-level description|' \
+                            r'implementation details|logic flow|control flow|data flow|' \
+                            r'runtime analysis|complexity analysis|space-time tradeoff|' \
+                            r'optimization technique|performance improvement|edge case handling|' \
+                            r'corner case handling|error handling|termination condition|' \
+                            r'base case|recursive case|invariant|pre-condition|post-condition|' \
+                            r'input constraints|output format|expected result|actual result|' \
+                            r'correctness proof|mathematical proof|inductive proof)\b'
+    text = safe_highlight(algorithm_descriptions, r'<span class="odp-foreground">\1</span>', text)
+    
+    # Web technologies (green for web terms)
+    web_technologies = r'\b(HTML|CSS|JavaScript|DOM|Browser API|Web API|Web Component|' \
+                      r'React|Angular|Vue|Svelte|jQuery|Bootstrap|Tailwind|' \
+                      r'HTTP|HTTPS|REST|GraphQL|WebSocket|SSE|AJAX|Fetch API|' \
+                      r'cookie|localStorage|sessionStorage|IndexedDB|Web Storage|' \
+                      r'responsive design|mobile-first|progressive enhancement|' \
+                      r'single-page application|SPA|server-side rendering|SSR|' \
+                      r'client-side rendering|CSR|static site generation|SSG|' \
+                      r'web standard|W3C|WHATWG|progressive web app|PWA)\b'
+    text = safe_highlight(web_technologies, r'<span class="odp-green">\1</span>', text)
+    
+    # URLs and file paths (green for paths)
+    urls_and_paths = r'(https?://[\w\-\.]+\.\w+(?:[\w\-\._~:/\?#\[\]@!\$&\'\(\)\*\+,;=]|%[0-9A-F]{2})*|' \
+                    r'(?:file|ftp|sftp|ssh|git|svn|mailto)://[\w\-\.]+(?:[\w\-\._~:/\?#\[\]@!\$&\'\(\)\*\+,;=]|%[0-9A-F]{2})*|' \
+                    r'/[\w\-\.]+(?:/[\w\-\.]+)*(?:\.\w+)?|' \
+                    r'(?:\.\.?/)+[\w\-\.]+(?:/[\w\-\.]+)*(?:\.\w+)?|' \
+                    r'(?:[A-Za-z]:)?[\\/][\w\-\.]+(?:[\\/][\w\-\.]+)*(?:\.\w+)?|' \
+                    r'(?:~|\.\.?)/[\w\-\.]+(?:/[\w\-\.]+)*(?:\.\w+)?)'
+    text = safe_highlight(urls_and_paths, r'<span class="odp-green">\1</span>', text)
+    
+    # UI/UX terminology (green for UI terms)
+    ui_terms = r'\b(user interface|UI|user experience|UX|accessibility|a11y|i18n|' \
+              r'internationalization|localization|l10n|responsive|adaptive|fluid|' \
+              r'layout|component|widget|control|element|container|grid|flexbox|' \
+              r'navigation|menu|sidebar|toolbar|header|footer|modal|dialog|popup|' \
+              r'tooltip|dropdown|accordion|tab|carousel|slider|pagination|' \
+              r'form|input|field|button|checkbox|radio|select|option|label|' \
+              r'validation|feedback|notification|alert|toast|banner|card|panel)\b'
+    text = safe_highlight(ui_terms, r'<span class="odp-green">\1</span>', text)
+    
+    # DOM elements (green for DOM)
+    dom_elements = r'\b(HTML element|DOM node|document fragment|shadow DOM|' \
+                  r'root element|parent element|child element|sibling element|' \
+                  r'ancestor element|descendant element|nested element|' \
+                  r'div|span|p|h1|h2|h3|h4|h5|h6|ul|ol|li|dl|dt|dd|' \
+                  r'table|tr|td|th|thead|tbody|tfoot|' \
+                  r'form|input|button|select|option|textarea|label|fieldset|' \
+                  r'a|img|audio|video|canvas|svg|path|rect|circle|' \
+                  r'header|footer|nav|main|article|section|aside)\b'
+    text = safe_highlight(dom_elements, r'<span class="odp-green">\1</span>', text)
+    
+    # Variable names (red for variables)
+    variable_names = r'\b(var|let|const|variable|field|property|attribute|member|' \
+                    r'local variable|instance variable|class variable|static variable|' \
+                    r'global variable|parameter|argument|temp|temporary|tmp|' \
+                    r'counter|index|iterator|enumerator|accumulator|result|' \
+                    r'value|values|key|keys|entry|entries|item|items|element|' \
+                    r'object|array|list|map|set|collection|sequence|enumerable|' \
+                    r'instance|reference|pointer|handle|identifier|id|name|label)\b'
+    text = safe_highlight(variable_names, r'<span class="odp-red">\1</span>', text)
+    
+    # Hardware components (red for hardware)
+    hardware_components = r'\b(CPU|processor|core|thread|memory|RAM|cache|L1|L2|L3|' \
+                         r'hard drive|HDD|solid state drive|SSD|disk|storage|' \
+                         r'motherboard|mainboard|chipset|BIOS|UEFI|firmware|' \
+                         r'graphics card|GPU|video card|sound card|network card|' \
+                         r'adapter|controller|peripheral|device|driver|' \
+                         r'bus|port|interface|connector|cable|socket|slot|' \
+                         r'register|address|pointer|memory address|stack|heap|' \
+                         r'buffer|page|segment|partition|sector|cluster|block)\b'
+    text = safe_highlight(hardware_components, r'<span class="odp-red">\1</span>', text)
+    
+    # Error conditions (red for errors)
+    error_conditions = r'\b(error condition|failure mode|fault|malfunction|crash|hang|freeze|' \
+                      r'timeout|deadlock|race condition|memory leak|buffer overflow|' \
+                      r'null pointer|segmentation fault|access violation|assertion failure|' \
+                      r'stack overflow|out of memory|out of bounds|division by zero|' \
+                      r'undefined behavior|unexpected result|incorrect behavior|' \
+                      r'corrupted data|data corruption|invalid state|inconsistent state|' \
+                      r'edge case|corner case|boundary condition|exceptional case)\b'
+    text = safe_highlight(error_conditions, r'<span class="odp-red">\1</span>', text)
+    
+    # Syntactic elements (white for syntax)
+    syntactic_elements = r'(\{|\}|\[|\]|\(|\)|<|>|;|:|,|\.|\'|\"|\`|' \
+                        r'\=\>|\-\>|::|\.\.|\.\.\.|' \
+                        r'#!|#!/|#include|#define|#ifdef|#ifndef|#endif|' \
+                        r'@import|@media|@keyframes|@font-face|@supports|' \
+                        r'begin|end|public|private|protected|internal|' \
+                        r'package|namespace|module|import|export|from|as|' \
+                        r'function|method|constructor|class|interface|enum|' \
+                        r'if|else|switch|case|default|for|while|do|break|continue|' \
+                        r'return|yield|async|await|try|catch|finally|throw|' \
+                        r'let|const|var|static|final|abstract|extends|implements)'
+    text = safe_highlight(syntactic_elements, r'<span class="odp-white">\1</span>', text)
+    
+    # Structural markers (white for structure)
+    structural_markers = r'\b(structure|layout|organization|arrangement|composition|' \
+                        r'hierarchy|tree|graph|network|chain|sequence|series|' \
+                        r'container|wrapper|decorator|adapter|facade|proxy|' \
+                        r'component|module|package|library|framework|system|' \
+                        r'head|tail|front|back|top|bottom|start|end|begin|finish|' \
+                        r'first|last|previous|next|parent|child|ancestor|descendant|' \
+                        r'root|leaf|node|vertex|edge|branch|path|route|link)\b'
+    text = safe_highlight(structural_markers, r'<span class="odp-white">\1</span>', text)
+    
+    # Numeric literals (yellow for numbers)
+    numeric_literals = r'(\b\d+\b|\b0x[0-9a-fA-F]+\b|\b0b[01]+\b|\b0o[0-7]+\b|' \
+                      r'\b\d+\.\d+\b|\b\d+e[+-]?\d+\b|\b\d+\.\d+e[+-]?\d+\b|' \
+                      r'\bnull\b|\bnil\b|\bNone\b|\bundefined\b|\bNaN\b|\bInfinity\b|' \
+                      r'\btrue\b|\bfalse\b|\bTRUE\b|\bFALSE\b|\bTrue\b|\bFalse\b|' \
+                      r'\byes\b|\bno\b|\bon\b|\boff\b)'
+    text = safe_highlight(numeric_literals, r'<span class="odp-yellow">\1</span>', text)
+    
+    # Constants and enum values (yellow for constants)
+    constants = r'\b(const|constant|final|readonly|immutable|frozen|sealed|' \
+               r'MAX_|MIN_|DEFAULT_|STANDARD_|BASIC_|PRIMARY_|SECONDARY_|' \
+               r'SUCCESS_|ERROR_|WARNING_|INFO_|DEBUG_|TRACE_|LOG_|' \
+               r'RED|GREEN|BLUE|YELLOW|CYAN|MAGENTA|BLACK|WHITE|GRAY|' \
+               r'NORTH|SOUTH|EAST|WEST|UP|DOWN|LEFT|RIGHT|CENTER|' \
+               r'MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY|' \
+               r'JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER|' \
+               r'HTTP_OK|HTTP_CREATED|HTTP_ACCEPTED|HTTP_BAD_REQUEST|HTTP_UNAUTHORIZED|HTTP_FORBIDDEN|HTTP_NOT_FOUND)\b'
+    text = safe_highlight(constants, r'<span class="odp-yellow">\1</span>', text)
+    
+    # Status codes and version numbers (yellow for codes)
+    status_codes = r'\b(\d{3}|\d{1,3}\.\d{1,3}\.\d{1,3}|\d{1,3}\.\d{1,3}|\d+\.\d+|' \
+                  r'v\d+\.\d+\.\d+|v\d+\.\d+|version \d+\.\d+\.\d+|version \d+\.\d+|' \
+                  r'HTTP 200|HTTP 201|HTTP 204|HTTP 400|HTTP 401|HTTP 403|HTTP 404|HTTP 500|' \
+                  r'2XX|3XX|4XX|5XX|' \
+                  r'HTTP_\d{3}|STATUS_\d{3}|EXIT_\d+|ERR_\d+|ERROR_\d+)\b'
+    text = safe_highlight(status_codes, r'<span class="odp-yellow">\1</span>', text)
+    
+    # Memory addresses and indices (yellow for addresses)
+    memory_addresses = r'(0x[0-9a-fA-F]+|\[\d+\]|\[\d+:\d+\]|\[\w+\]|' \
+                      r'\w+\[\d+\]|\w+\[\w+\]|\w+\[:\]|\w+\[:\d+\]|\w+\[\d+:\]|\w+\[\d+:\d+\]|' \
+                      r'&\w+|\*\w+|->\w+|\.\w+|->\w+\.\w+|' \
+                      r'pointer to \w+|address of \w+|reference to \w+|' \
+                      r'array index|array indices|array offset|memory offset|memory address|pointer address)'
+    text = safe_highlight(memory_addresses, r'<span class="odp-yellow">\1</span>', text)
+    
+    # HTTP status code families (purple for keywords/programming concepts)
+    text = safe_highlight(r'\b(\d)xx\b', r'<span class="odp-purple">\1xx</span>', text)
+    
+    # Protocol full names (purple for programming languages/frameworks/libraries)
     protocol_full_names = r'(Hypertext Transfer Protocol|File Transfer Protocol|Simple Mail Transfer Protocol|' \
                          r'Internet Control Message Protocol|Transmission Control Protocol|User Datagram Protocol|' \
                          r'Domain Name System|Secure Shell Protocol|Transport Layer Security|Secure Sockets Layer|' \
                          r'Internet Protocol|Address Resolution Protocol|integrated media production suites)'
     
-    text = re.sub(f'{protocol_full_names}(\\s*\\(([^)]+)\\))', 
-                  r'<span class="odp-purple">\1</span><span class="odp-black">\2</span>', text)
+    text = safe_highlight(f'{protocol_full_names}(\\s*\\(([^)]+)\\))', 
+                  r'<span class="odp-purple">\1</span><span class="odp-brightBlack">\2</span>', text)
     
-    # Color individual protocol name words (purple)
+    # Protocol name keywords (purple for language keywords and frameworks)
     protocol_keywords = r'\b(Hypertext|Transfer|Protocol|File|Simple|Mail|Internet|Control|Message|Transmission|' \
                        r'User|Datagram|Domain|Name|System|Secure|Shell|Transport|Layer|Security|Sockets|Address|' \
                        r'Resolution|WordPress|operating system|numerical address)\b'
-    text = re.sub(protocol_keywords, r'<span class="odp-purple">\1</span>', text)
+    text = safe_highlight(protocol_keywords, r'<span class="odp-purple">\1</span>', text)
     
-    # Highlight programming languages, frameworks, and technical platforms (yellow for constants)
-    tech_pattern = r'\b(JavaScript|Python|Java|C\+\+|Ruby|PHP|HTML|CSS|React|Angular|Vue|Node\.js|TypeScript|' \
+    # Programming languages, frameworks, and platforms (brightYellow for parameters/configuration options)
+    tech_pattern = r'\b(JavaScript|Python|Java|C\+\+|C#|Ruby|PHP|HTML|CSS|React|Angular|Vue|Node\.js|TypeScript|' \
                 r'SQL|NoSQL|MongoDB|Redis|Docker|Kubernetes|AWS|Azure|JSON|Google Chrome|Mozilla Firefox|' \
                 r'Microsoft Edge|Safari|Developer Tools|DevTools|Web Inspector|JSON web token|blockchain|ledger|' \
                 r'Microsoft Excel|text\/html|application\/json|HTML data|XML data|JSON data|Binary data|WordPress|' \
@@ -80,11 +1014,11 @@ def convert_markdown_to_html(text):
                 r'Certificate Authorities|DNS record|IP address|device identification|street address|' \
                 r'DNS records|resource record|DNS server|definitive records|definitive DNS records|final IP mappings|' \
                 r'IP mapping|definitive IP mapping|suffix-level resolution|software applications|security needs|' \
-                r'privacy features)\b'
-    text = re.sub(tech_pattern, r'<span class="odp-yellow">\1</span>', text)
+                r'privacy features|JavaScript code|security certificates|safe browsing sessions)\b'
+    text = safe_highlight(tech_pattern, r'<span class="odp-brightYellow">\1</span>', text)
     
-    # Highlight network architecture concepts (orange for properties/attributes)
-    network_architecture = r'\b(application layer|transport layer|network layer|link layer|physical layer|' \
+    # Architecture concepts (yellow for numeric literals/attributes)
+    architecture_concepts = r'\b(application layer|transport layer|network layer|link layer|physical layer|' \
                 r'network model|protocol stack|network protocol stack|lower-level protocols|TCP\/IP|OSI model|' \
                 r'request line|resource address|hardware-level addressing|URL|domain name resolution|status codes|' \
                 r'encryption method|content format|key-value pairs|caching policies|security process|' \
@@ -102,10 +1036,12 @@ def convert_markdown_to_html(text):
                 r'domain-to-IP translation|gateway address|local resolver settings|permanent universal port number|' \
                 r'caching mechanism|192\.168\.1\.1|DNS query sequence|query sequence|initial reference|' \
                 r'IP information|final IP|definitive record|definitive IP address|ecosystem features|' \
-                r'operational details|feature sets)\b'
-    text = re.sub(network_architecture, r'<span class="odp-orange">\1</span>', text)
+                r'operational details|feature sets|graphical representation|visual layout|page layout|screen sizes|' \
+                r'processing capabilities|internet connectivity speeds|service provider configurations|' \
+                r'data security|secure connections|built-in protections|system safeguards|network protections)\b'
+    text = safe_highlight(architecture_concepts, r'<span class="odp-yellow">\1</span>', text)
     
-    # Color individual architecture words (orange)
+    # Architecture term keywords (yellow for numeric attributes/constants)
     architecture_keywords = r'\b(application|transport|network|layer|layers|link|physical|model|stack|protocol|' \
                           r'protocols|lower-level|TCP\/IP|OSI|request|line|resource|address|URL|URI|' \
                           r'hardware-level|addressing|status|encryption|keys|values|pairs|format|content|caching|' \
@@ -115,22 +1051,22 @@ def convert_markdown_to_html(text):
                           r'metadata|client|server|browser|web|technical|infrastructure|specifications|essential|' \
                           r'selected|reliability|performance|uptime|price|cost|affordable|pricing|administration|' \
                           r'complexity|skills|port|gateway|mechanism|universal|permanent|resolver|settings|local)\b'
-    text = re.sub(architecture_keywords, r'<span class="odp-orange">\1</span>', text)
+    text = re.sub(architecture_keywords, r'<span class="odp-yellow">\1</span>', text)
     
-    # Highlight protocol positioning with layers
+    # Protocol positioning with layers
     text = re.sub(r'\b(HTTP|HTTPS|FTP|SMTP|ICMP|TCP|IP|UDP|DNS|SSH|TLS|SSL|ARP|IMAP)' \
                  r'(\s+at\s+the\s+)(application layer|transport layer|network layer|link layer)\b', 
-                 r'<span class="odp-blue">\1</span>\2<span class="odp-orange">\3</span>', text)
+                 r'<span class="odp-blue">\1</span>\2<span class="odp-yellow">\3</span>', text)
     
-    # Highlight relationships between protocols and stack
+    # Relationships between protocols and stack (cyan for operators/actions)
     text = re.sub(r'\b(relies on|runs on top of|resides in|below|above|on top of|included in|part of)\b', 
                  r'<span class="odp-cyan">\1</span>', text)
     
-    # Color individual relationship words (cyan)
+    # Relationship keywords (cyan for operators/logical operations)
     relationship_keywords = r'\b(relies|runs|resides|below|above|top|included|part)\b'
     text = re.sub(relationship_keywords, r'<span class="odp-cyan">\1</span>', text)
     
-    # Highlight technical actions and verbs (cyan for operators)
+    # Technical actions and data transformations (cyan for operators/transformations)
     actions_pattern = r'\b(enables|transferring|sending|receiving|handles|serving|processing|communicating|' \
                      r'exchanging|forming|providing|operates|functions|managing|ensuring|transmit|forwards|' \
                      r'filter|rewrite|maps|routes|transports|responds|requests|execute|rely|resides|perform|' \
@@ -160,10 +1096,13 @@ def convert_markdown_to_html(text):
                      r'initiates lookups|coordinates the lookup process|DNS lookup|fulfills the query|' \
                      r'narrows down the search|satisfies a client\'s DNS query|sends further requests|' \
                      r'iterative requests|reference|points to|redirects|directs the request|directs queries|' \
-                     r'resolves|completes the resolution process|returns the IP address)\b'
+                     r'resolves|completes the resolution process|returns the IP address|constructs|' \
+                     r'fetching|interprets and runs|encrypt data transmissions|protect users|adding or removing|' \
+                     r'fetches data|adds interactivity|collaborate|collaborating|dividing tasks|transform|' \
+                     r'adapt|regulate|control|testing|supporting|detect|adjust|present|automate)\b'
     text = re.sub(actions_pattern, r'<span class="odp-cyan">\1</span>', text)
     
-    # Add singular/plural forms for technical actions (cyan)
+    # Singular/plural forms for technical actions (cyan for data transformations)
     actions_singular_plural = r'\b(transfer|transfers|transmitted|transmits|request|response|responses|load|' \
                               r'loads|handle|service|map|route|process|transport|respond|request|execute|' \
                               r'execution|rely|reside|forward|filter|filters|rewrite|rewrites|discard|discards|' \
@@ -188,15 +1127,17 @@ def convert_markdown_to_html(text):
                               r'grant|granted|ensure|ensures|connect|connects|cover|covers|remain|remained|' \
                               r'upload|uploads|uploaded|uploading|configure|configured|configuring|translate|' \
                               r'translates|translated|translating|organize|organizes|organized|organizing|' \
-                              r'confirm|confirms|confirmed|encryption|input|inputs)\b'
+                              r'confirm|confirms|confirmed|encryption|input|inputs|construct|constructs|' \
+                              r'fetch|fetches|protect|protects|collaborate|collaborates)\b'
     text = re.sub(actions_singular_plural, r'<span class="odp-cyan">\1</span>', text)
     
-    # Add browser-specific actions (cyan)
+    # Browser-specific actions (cyan for operations/transformations)
     browser_actions = r'\b(converts HTML into a webpage|removes HTML content|stores HTML as a text file|' \
-                     r'encrypts HTML for security|renders|rendering)\b'
+                     r'encrypts HTML for security|renders|rendering|translates the code|determines how elements|' \
+                     r'arranges them accordingly|loads or interact|reads the code|executes it|handles interactions)\b'
     text = re.sub(browser_actions, r'<span class="odp-cyan">\1</span>', text)
     
-    # Highlight important web/internet terms (green for strings)
+    # Web/internet terms (green for strings/URLs/web technologies)
     web_terms = r'\b(World Wide Web|web|internet|online|browser|server|client|request|response|data|resources|' \
                r'systems|foundation|basis|content|communications|information|transfer|packet|frame|message|' \
                r'record|address|routing|addressing|traffic|transaction|network|devices|media|interactive|text|' \
@@ -249,10 +1190,13 @@ def convert_markdown_to_html(text):
                r'domain suffix|domain extensions|TLD|final segment|DNS resolution path|domain\'s extension|' \
                r'domain to IP address|digital media|online presence|multimedia files|images|videos|' \
                r'interactive content|website|digital platform|brand recognition|' \
-               r'internet-based business operations|multimedia content|browser technology)\b'
+               r'internet-based business operations|multimedia content|browser technology|interactivity|' \
+               r'button clicks|form submissions|animations|modern web experiences|tab management|web browsing|' \
+               r'back and forward buttons|navigation|web page|web pages|Internet\'s vast content|' \
+               r'user practices|input methods|interactive elements)\b'
     text = re.sub(web_terms, r'<span class="odp-green">\1</span>', text)
     
-    # Add individual web/internet terms (green)
+    # Individual web/internet terms (green for strings/URLs)
     web_terms_individual = r'\b(World|Wide|Web|website|webpage|page|pages|internetworking|browser|browsers|' \
                           r'server|servers|client|clients|request|requests|response|responses|datum|resource|' \
                           r'system|foundation|content|communication|communicate|inform|information|transfer|' \
@@ -291,10 +1235,11 @@ def convert_markdown_to_html(text):
                           r'shared|reseller|cloud|phonebook|human-readable|machine-readable|text-based|' \
                           r'numeric-only|connected|infrastructure|webpage|local|hostname|domain|segment|' \
                           r'extension|suffix|rack|library|racks|lookup|lookups|IP|digital|media|presence|' \
-                          r'multimedia|image|recognition)\b'
+                          r'multimedia|image|recognition|interactivity|animation|animations|tab|tabs|interactive|' \
+                          r'browsing|back|forward|button|buttons|navigation)\b'
     text = re.sub(web_terms_individual, r'<span class="odp-green">\1</span>', text)
     
-    # Highlight networking components and hardware (red for variables/tags)
+    # Networking components and hardware (red for variables/components/errors)
     components = r'\b(server|client machine|router|switch|firewall|DNS queries|static IP address|email message|' \
                 r'browsers|hosts|machine addresses|physical machine|networked devices|MAC address|' \
                 r'server-side scripts|storage|file system path|web host|domain registrar|verification token|' \
@@ -321,10 +1266,13 @@ def convert_markdown_to_html(text):
                 r'resolvers|MAC address|private device credentials|firewall list|root servers|DNS recursor|' \
                 r'DNS recursors|root nameserver|root nameservers|top-level domain nameserver|' \
                 r'top-level domain nameservers|authoritative nameserver|authoritative nameservers|' \
-                r'TLD nameserver|TLD nameservers|physical locations|offline distribution hubs)\b'
-    text = re.sub(components, r'<span class="odp-red">\1</span>', text)
+                r'TLD nameserver|TLD nameservers|physical locations|offline distribution hubs|user interface|' \
+                r'rendering engine|networking component|JavaScript engine|security components|address bar|' \
+                r'navigation buttons|specialized components|specialized systems|' \
+                r'distinct parts|different components|specialized modules|gadgets|code)\b'
+    text = safe_highlight(components, r'<span class="odp-red">\1</span>', text)
     
-    # Add individual component words (red)
+    # Individual component words (red for variables/hardware)
     components_individual = r'\b(machine|machines|router|routers|switch|switches|firewall|firewalls|query|' \
                            r'queries|static|dynamic|host|hosts|address|addresses|physical|hardware|networked|' \
                            r'network|device|devices|browser|browsers|MAC|server-side|script|scripts|storage|' \
@@ -342,194 +1290,27 @@ def convert_markdown_to_html(text):
                            r'machine|computer|storage|device|brochure|brochures|agency|agencies|control|manager|' \
                            r'token|custom|drive|images|photos|virtualization|virtual|administrative|privileges|' \
                            r'serial|code|codes|hostname|root|firewall|recursor|recursors|nameserver|nameservers|' \
-                           r'physical|offline|location|locations|distribution|hubs|hub|logistics)\b'
-    text = re.sub(components_individual, r'<span class="odp-red">\1</span>', text)
+                           r'physical|offline|location|locations|distribution|hubs|hub|logistics|interface|' \
+                           r'component|components|module|modules|part|parts|phishing|malware|threats|threat)\b'
+    text = safe_highlight(components_individual, r'<span class="odp-red">\1</span>', text)
     
-    # Highlight hosting types (yellow for constants)
+    # Hosting types (brightYellow for configuration options/parameters)
     hosting_types = r'\b(shared hosting|dedicated hosting|VPS hosting|reseller hosting|virtual private server|' \
                    r'free hosting|paid hosting|enterprise hosting|cloud hosting|government hosting|' \
                    r'academic hosting|personal hosting|group hosting|email hosting|video hosting|audio hosting|' \
                    r'image hosting|managed WordPress hosting|dedicated server|shared servers|limited privileges|' \
                    r'advanced configurations|advanced management expertise|user-friendly environment|' \
                    r'moderate technical skills)\b'
-    text = re.sub(hosting_types, r'<span class="odp-yellow">\1</span>', text)
+    text = safe_highlight(hosting_types, r'<span class="odp-brightYellow">\1</span>', text)
     
-    web_terms = r'\b(World Wide Web|web|internet|online|browser|server|client|request|response|data|' + \
-               r'resources|systems|foundation|basis|content|communications|information|transfer|packet|' + \
-               r'frame|message|record|address|routing|addressing|traffic|transaction|network|devices|' + \
-               r'media|interactive|text|login|command|error|operational|flow|sequence|hypertext|' + \
-               r'hypertext links|hypertext-linked|website content|webpages|data exchange|' + \
-               r'diagnostic functions|error reporting|email transmission|data payloads|domain names|' + \
-               r'inbound packets|congestion|features|core mechanism|general information|corresponding|' + \
-               r'standard|interaction|communications possible|Internet communication|client application|' + \
-               r'encoded data|data submission|database query|protocol version|directory structure|' + \
-               r'encryption key|hardware versions|geographical data|authentication|user agent|' + \
-               r'content type|anti-malware|form submissions|JSON payloads|authorization key|' + \
-               r'security configuration|multi-faceted|structured|personal data|metadata|website|webpage|' + \
-               r'web traffic|cached version|unencrypted data transfer|action indicator|HTTP verb|' + \
-               r'key-value pairs|textual information|text-based details|structured pairs|metadata|' + \
-               r'instructions|client browser details|requested data|parameters|JSON syntax|URL parameters|' + \
-               r'cookie data|session identifiers|browser metadata|form data|multipart form data|' + \
-               r'URL-encoded key-value pairs|HTTP request body|body of an HTTP request|' + \
-               r'information being transferred|data payload|submitted information|form inputs|' + \
-               r'internet server|web client|web clients|internet servers|content details|status details|' + \
-               r'encryption status|protocol in use|unencrypted resources|encrypted resources|caching|' + \
-               r'offline caching|direct reply|content returned|specifics of the preceding request|' + \
-               r'valuable information|offline data|HTTP status code|status codes|language information|' + \
-               r'language|reading mode|requested information|default error message|stateless protocol|' + \
-               r'stateful sessions|persistent session data|self-contained|caches resources|' + \
-               r'indefinite caching|tracking user data|original specification|non-persistent|' + \
-               r'persistent connections|data transfer|reliable data transmission|overhead|' + \
-               r'subsequent requests|resource consumption|TCP handshakes|sockets|deliberately closed|' + \
-               r'OSI model|application layer attacks|network layer attacks|session layer attacks|' + \
-               r'physical layer attacks|denial-of-service|distributed denial-of-service|DoS|DDoS|' + \
-               r'excessive requests|massive request volumes|strategic request volumes|legitimate access|' + \
-               r'domain name|hosting plan|web hosting|hosting provider|website files|server space|' + \
-               r'web address|functional website|accessibility|online presence|global access|' + \
-               r'global accessibility|publicly available|online accessibility|unique web address|' + \
-               r'rented space|web server|website content|viewing online|accessible to visitors|' + \
-               r'personal blogs|business websites|low cost|high-end business services|sources of sales|' + \
-               r'sources of leads|personal computer|public server|diverse technical|budget requirements|' + \
-               r'internet users|search engines|core functionality|user-friendly environment|' + \
-               r'affordable prices|service level|consistent operation|stable hosting infrastructure|' + \
-               r'high uptime|minimal free plans|feature-rich business packages|advanced features|support|' + \
-               r'essential details|fast site speeds|indexing|environment|intended use|required features|' + \
-               r'available budget|sales|revenue|online platforms|point of contact|performance lags|' + \
-               r'unexpected fees|downtime|lost visitor opportunities|visitor patience|' + \
-               r'comprehensive information|considerations|appropriate hosting solution|technology|' + \
-               r'global availability|performance|service|hosting details|hosting companies|' + \
-               r'hosting choices|free advertisement|security threats|complimentary promotion|' + \
-               r'hosting solution|domain registration|complimentary promotion|related services|' + \
-               r'indexing by external services|worldwide|technology|web hosting|dedicated hosting|' + \
-               r'shared hosting|VPS hosting|reseller hosting|cloud|website|domain name|' + \
-               r'online accessibility|continuous website availability|website files|virtualization|' + \
-               r'virtual server|virtual environment|virtual private server|site builder|web builder|' + \
-               r'static site|phonebook of the Internet|website names|numeric-only URLs|web addresses|' + \
-               r'human-readable domain names|machine-readable IP addresses|text-based identifiers|' + \
-               r'Internet-connected device|networks|webpage|DNS infrastructure|local network|' + \
-               r'hostname|human-readable hostname|domain name|domain extension|domain suffix|' + \
-               r'domain extensions|TLD|final segment|DNS resolution path|domain\'s extension|' + \
-               r'domain to IP address|digital media|online presence|multimedia files|images|videos|' + \
-               r'interactive content|website|digital platform|brand recognition|' + \
-               r'internet-based business operations|multimedia content|browser technology)\b'
-    text = re.sub(web_terms, r'<span class="odp-green">\1</span>', text)
-    
-    # Add individual web/internet terms (green)
-    web_terms_individual = r'\b(World|Wide|Web|website|webpage|page|pages|internetworking|browser|' + \
-                          r'browsers|server|servers|client|clients|request|requests|response|responses|' + \
-                          r'datum|resource|system|foundation|content|communication|communicate|inform|' + \
-                          r'information|transfer|transfers|packet|packets|frame|frames|message|messages|' + \
-                          r'record|records|address|addresses|route|routes|traffic|transact|transaction|' + \
-                          r'transactions|network|networks|device|medium|media|interact|interactive|text|' + \
-                          r'texts|login|logins|command|commands|operation|operations|sequence|sequences|' + \
-                          r'hyper|link|links|linked|site|sites|exchange|exchanges|diagnostic|diagnose|' + \
-                          r'report|reports|email|emails|payload|payloads|domain|domains|inbound|outbound|' + \
-                          r'incoming|outgoing|congest|congestion|feature|features|core|mechanism|' + \
-                          r'mechanisms|general|correspond|corresponds|standard|standards|interact|' + \
-                          r'interacts|interaction|interactions|encode|encoded|submit|submission|query|' + \
-                          r'queries|encrypt|encryption|version|versions|structure|structured|authenticate|' + \
-                          r'authentication|agent|agents|type|types|malware|form|forms|security|secure|' + \
-                          r'multi|faceted|token|tokens|key|keys|value|values|pair|pairs|textual|' + \
-                          r'text-based|detail|details|instruction|metadata|parameter|parameters|syntax|' + \
-                          r'URL|cookie|cookies|session|identifier|identifiers|body|multipart|submitted|' + \
-                          r'inputs|JSON|XML|offline|data|precedence|preceding|valuable|returned|direct|' + \
-                          r'unencrypted|encrypted|specifics|details|requested|asked|language|reading|' + \
-                          r'mode|hosting|host|hosts|public|publicly|accessible|global|globally|functional|' + \
-                          r'budget|sales|leads|load|loading|quick|quickly|fast|slow|visitors|visitor|' + \
-                          r'allocation|space|spaces|provider|providers|plan|plans|files|file|user|users|' + \
-                          r'connectivity|rental|rent|renting|hosting|provider|website files|server space|' + \
-                          r'web address|functional website|accessibility|online presence|global access|' + \
-                          r'global accessibility|publicly available|online accessibility|' + \
-                          r'unique web address|rented space|web server|website content|viewing online|' + \
-                          r'accessible to visitors|personal blogs|business websites|low cost|' + \
-                          r'high-end business services|sources of sales|sources of leads|personal computer|' + \
-                          r'public server|beginners|technical|diverse|alternatives|patience|promotion|' + \
-                          r'popularity|opportunities|affordable|support|platform|information|' + \
-                          r'considerations|solution|customers|branding|hosting|reliable|conversion|' + \
-                          r'visitor|visitors|search|searches|high-traffic|static|performance|experience|' + \
-                          r'skills|expertise|convenience|infrastructure|operation|technical|internet|' + \
-                          r'index|indices|indexed|indexing|device|devices|available|availability|store|' + \
-                          r'stored|storage|service|services|level|global|access|world|worldwide|' + \
-                          r'requirement|requirements|beginner|budget|speed|speeds|business|businesses|' + \
-                          r'engine|engines|ranking|registration|privilege|privileges|trend|trends|' + \
-                          r'configuration|configurations|visibility|income|technology|virtual|dedicated|' + \
-                          r'shared|reseller|cloud|phonebook|human-readable|machine-readable|text-based|' + \
-                          r'numeric-only|connected|infrastructure|webpage|local|hostname|domain|segment|' + \
-                          r'extension|suffix|rack|library|racks|lookup|lookups|IP|digital|media|presence|' + \
-                          r'multimedia|image|recognition)\b'
-    text = re.sub(web_terms_individual, r'<span class="odp-green">\1</span>', text)
-    
-    # Highlight networking components and hardware (red for variables/tags)
-    components = r'\b(server|client machine|router|switch|firewall|DNS queries|static IP address|' + \
-                r'email message|browsers|hosts|machine addresses|physical machine|networked devices|' + \
-                r'MAC address|server-side scripts|storage|file system path|web host|domain registrar|' + \
-                r'verification token|DNS resolver|anti-malware signature|firewall configuration|' + \
-                r'time-based one-time password|hardware versions|database system|server resource|' + \
-                r'server memory capacity|compression settings|physical hardware|operating system level|' + \
-                r'hardware configuration|programming language|network analysis tools|' + \
-                r'browser\'s developer tools|DNS records|user-agent strings|database schema|IP address|' + \
-                r'network tab|username|password|credentials|user credentials|client hardware|' + \
-                r'DNS root record|SSL private key|blockchain ledger|DNS infrastructure|device driver|' + \
-                r'driver updates|client hardware|routing table|server\'s private key|zone transfers|' + \
-                r'add-ons manager|reading mode|data inspector|browser extensions|raw HTTP traffic|' + \
-                r'unauthorized users|unauthorized access|target device|hardware and signal transmission|' + \
-                r'IP-based operations|personal computer|social media platforms|email marketing software|' + \
-                r'security certificate|social media manager|graphic designer|custom email address|' + \
-                r'paid advertising|social media listing|offline marketing campaigns|local hard drive|' + \
-                r'mirror copy|local network|open-source content management systems|email campaigns|' + \
-                r'domain registration services|marketing tools|streaming services|analytics plugin|' + \
-                r'social media followers|government agencies|contact forms|chat features|web server|' + \
-                r'personal computer|local desktop folder|shared network drive|' + \
-                r'mobile application repository|server management console|database query engine|' + \
-                r'peer-to-peer file sharing platform|remote email server|design agency|' + \
-                r'content delivery network|shared network drive|powerful computer|virtual environments|' + \
-                r'virtualization software|administrative privileges|IP addresses|manufacturer serial codes|' + \
-                r'hardware serial numbers|serial numbers|device identifiers|physical device identifiers|' + \
-                r'hostname|resolvers|MAC address|private device credentials|firewall list|root servers|' + \
-                r'DNS recursor|DNS recursors|root nameserver|root nameservers|top-level domain nameserver|' + \
-                r'top-level domain nameservers|authoritative nameserver|authoritative nameservers|' + \
-                r'TLD nameserver|TLD nameservers|physical locations|offline distribution hubs)\b'
-    text = re.sub(components, r'<span class="odp-red">\1</span>', text)
-    
-    # Add individual component words (red)
-    components_individual = r'\b(machine|machines|router|routers|switch|switches|firewall|firewalls|' + \
-                           r'query|queries|static|dynamic|host|hosts|address|addresses|physical|hardware|' + \
-                           r'networked|network|device|devices|browser|browsers|MAC|server-side|script|' + \
-                           r'scripts|storage|file|path|paths|host|hosts|registrar|registrars|verification|' + \
-                           r'resolver|resolvers|signature|signatures|configuration|configurations|' + \
-                           r'password|passwords|time-based|database|system|systems|memory|capacity|' + \
-                           r'compression|level|resource|resources|hardware-level|setup|programming|' + \
-                           r'language|languages|environment|environments|analysis|tools|tool|tab|tabs|' + \
-                           r'developer|schema|schemas|string|strings|record|records|user-agent|username|' + \
-                           r'credential|credentials|root|ledger|driver|drivers|private|zone|zones|' + \
-                           r'transfer|transfers|infrastructure|SSL|SMTP|FTP|add-ons|manager|data|' + \
-                           r'inspector|extensions|raw|unauthorized|access|social|media|platforms|' + \
-                           r'marketing|campaign|campaigns|certificate|certificates|designer|designers|' + \
-                           r'custom|email|advertisement|advertising|listing|offline|local|mirror|copy|' + \
-                           r'streaming|plugin|plugins|analytics|follower|followers|agency|agencies|' + \
-                           r'government|chat|forms|form|contact|personal|machine|computer|storage|device|' + \
-                           r'brochure|brochures|agency|agencies|control|manager|token|custom|drive|' + \
-                           r'images|photos|virtualization|virtual|administrative|privileges|serial|code|' + \
-                           r'codes|hostname|root|firewall|recursor|recursors|nameserver|nameservers|' + \
-                           r'physical|offline|location|locations|distribution|hubs|hub|logistics)\b'
-    text = re.sub(components_individual, r'<span class="odp-red">\1</span>', text)
-    
-    # Highlight hosting types (yellow for constants)
-    hosting_types = r'\b(shared hosting|dedicated hosting|VPS hosting|reseller hosting|' + \
-                   r'virtual private server|free hosting|paid hosting|enterprise hosting|cloud hosting|' + \
-                   r'government hosting|academic hosting|personal hosting|group hosting|email hosting|' + \
-                   r'video hosting|audio hosting|image hosting|managed WordPress hosting|dedicated server|' + \
-                   r'shared servers|limited privileges|advanced configurations|' + \
-                   r'advanced management expertise|user-friendly environment|moderate technical skills)\b'
-    text = re.sub(hosting_types, r'<span class="odp-yellow">\1</span>', text)
-    
-    # Highlight "not" statements in incorrect explanations
-    text = re.sub(r'\b(not|rather than|instead of|does not|cannot|no|never|unrelated|confuses|' + \
+    # Error conditions and negation terms (red for errors/exceptions)
+    error_conditions = r'\b(not|rather than|instead of|does not|cannot|no|never|unrelated|confuses|' + \
                  r'mandatory|compulsory|required|typically|generally|occur|only|beyond|contradicting|' + \
                  r'without|inaccurate|separate|lack|fails|failed|different|differences|mistakenly|' + \
                  r'wrong|unlikely|ineffective|exclusively|if not|merely|restricted|inappropriate|' + \
-                 r'independent|incompatible|inadequate|specialized license|permission)\b', 
-                 r'<span class="odp-red">\1</span>', text)
+                 r'independent|incompatible|inadequate|specialized license|permission)\b'
+    text = safe_highlight(error_conditions, r'<span class="odp-red">\1</span>', text)
+    
     # Convert markdown to HTML using Anki's built-in markdown
     html = markdown.markdown(text)
     
@@ -543,6 +1324,14 @@ def convert_markdown_to_html(text):
         html,
         flags=re.DOTALL
     )
+    
+    # Final check to fix any potential overlapping spans that might have been created during markdown conversion
+    # This regex looks for malformed span patterns like nested spans with class="odp-*"
+    malformed_span_pattern = r'<span class="odp-([^"]*)">([^<>]*)<span class="odp-[^"]*">([^<>]*)</span>([^<>]*)</span>'
+    while re.search(malformed_span_pattern, html):
+        html = re.sub(malformed_span_pattern, 
+                     r'<span class="odp-\1">\2\3\4</span>',
+                     html)
     
     return html
 
@@ -712,7 +1501,7 @@ ___""")
             incorrect_count = len(sections['incorrect_options'])
             
             # Create note with version number
-            model_name = f"ExamCard{correct_count}{incorrect_count}v5.1"
+            model_name = f"ExamCard{correct_count}{incorrect_count}"
             model = mw.col.models.by_name(model_name)
             if not model:
                 create_exam_note_type(correct_count, incorrect_count)
@@ -756,7 +1545,7 @@ mw.form.menuTools.addAction(action)
 
 def create_exam_note_type(correct_options, incorrect_options):
     """Create an exam note type with code examples."""
-    model_name = f"ExamCard{correct_options}{incorrect_options}v5.1"
+    model_name = f"ExamCard{correct_options}{incorrect_options}"
     if model_name not in mw.col.models.all_names():
         mm = mw.col.models
         m = mm.new(model_name)
@@ -1023,42 +1812,104 @@ def create_exam_note_type(correct_options, incorrect_options):
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             transition: all 0.3s ease;
         }
-        /* One Dark Pro Syntax Highlighting Guide*/
-        .odp-red {
-        color: #e06c75; /* Variables, properties, tags, custom elements, HTML/XML tags, component names, Web Components, GraphQL fields */
-        }
-
-        .odp-green {
-        color: #98c379; /* Strings, URLs, file paths, web-related terms (Frontend, Backend, DevOps, Internet, HTML, CSS, Progressive Web Applications, Static Site Generators, Frameworks, Architecture terms) */
-        }
-
-        .odp-yellow {
-        color: #e5c07b; /* Constants, enums, metadata, annotations, protocol definitions, structural keywords (class, interface, enum, extends, implements), types/interfaces, Type Checkers annotations, GraphQL schema definitions, JSON keys, YAML attributes, configuration keys, Protocol definitions, important concepts (Architecture, Scalability, Cloud Design Patterns, Design Patterns, Authentication, Web Security, Web Accessibility, Server-side rendering, Virtualization, Containerization) */
-        }
-
-        .odp-blue {
-        color: #61afef; /* Functions, methods, API endpoints, cloud operations, network protocols, server operations (HTTP, HTTPS, FTP, SSH, Cloud Providers, Serverless, Protocols, Provisioning, Terminal commands, Operating Systems, Shell scripting commands, CLI tools, Module Bundlers, Build Tools, Package Managers, Linters and Formatters, Testing frameworks, Terminal commands, Virtual Environments) */
-        }
-
-        .odp-purple {
-        color: #c678dd; /* Keywords, data types, modules, frameworks, libraries, preprocessors, programming languages (JavaScript, TypeScript, Python, Java, Rust, etc.), Frameworks (React, Vue, Angular, Express, Django, Next.js, Static Site Generators, Progressive Web Applications, Web Frameworks), Type Checkers, Module Bundlers, Framework-related annotations, middleware components, GraphQL schemas, Static Site Generators */
-        }
-
-        .odp-cyan {
-        color: #56b6c2; /* Operators, technical actions, mathematical operations, logical operators, CI/CD actions, Deployment commands, Version Control Systems (VCS) operations (Git commands), Package Manager commands (npm, yarn), Infrastructure as Code (IaC), Provisioning commands, Container orchestration, build actions, deployment scripts */
-        }
-
-        .odp-orange {
-        color: #d19a66; /* Numbers, attributes, numeric values, configuration values, ports, indexes, performance metrics, Real-Time Data streams, Message Broker topics, caching strategies, numerical parameters, attributes, identifiers, Static Site Generation parameters, Progressive Web Application (PWA) configurations, Operating System identifiers, Web Server ports/configurations, HTTP status codes */
-        }
-
-        .odp-black {
-        color: #5c6370; /* Comments, parentheses, brackets, braces, documentation annotations, descriptive texts, explanatory notes, generic terms, placeholder text, negation terms, general explanatory or supplemental information */
-        }
-
-        .odp-white {
-        color: #abb2bf; /* Default text, regular code elements, normal punctuation, general documentation, descriptions, narrative text, plain content without specific technical categorization */
-        }
+        
+        /* One Dark Pro Syntax Highlighting */
+        /* Main background color for the exam card UI and code editor backgrounds */
+        .odp-background { background-color: #282C34; }
+        
+        /* Used for UI container backgrounds, inactive elements, and secondary panels;
+           In CS context: namespaces, scopes, contexts, virtual environments */
+        .odp-black { color: #3F4451; }
+        
+        /* Used for functions, methods, protocols, API endpoints, hooks, callbacks, HTTP components, network operations;
+           Also includes: Cloud services (AWS Lambda, Azure Functions), Docker commands, CI/CD operations,
+           Git operations, REST/GraphQL endpoints, terminal commands, shell scripts, build tools, deployment scripts,
+           database operations (SELECT, INSERT, JOIN), runtime methods, lifecycle hooks */
+        .odp-blue { color: #61afef; }
+        
+        /* Used for secondary text, line numbers in code blocks, comments, documentation notes;
+           In CS context: complexity annotations (O(n), Θ(n log n)), code metadata */
+        .odp-brightBlack { color: #4F5666; }
+        
+        /* Used for focused UI elements, selected interactive elements, active states;
+           In CS context: currently executing code, runtime focus, primary call paths, main threads */
+        .odp-brightBlue { color: #4dc4ff; }
+        
+        /* Used for highlighting special characters in code, escape sequences, regex patterns;
+           In CS context: operators, pointer dereferencing, bitwise operations, mathematical operations,
+           state transitions, pipeline operators, logical gates, query operators */
+        .odp-brightCyan { color: #4cd1e0; }
+        
+        /* Used for success messages, correct selections, "added" content in diffs;
+           In CS context: passed tests, validated data, successful operations, optimization gains,
+           performance improvements, positive metrics, resource efficiencies */
+        .odp-brightGreen { color: #a5e075; }
+        
+        /* Used for highlighted keywords, decorators, special directives in code;
+           In CS context: advanced language features, metaprogramming, reflection capabilities,
+           compiler directives, preprocessor commands, build configurations, annotations, transformers */
+        .odp-brightPurple { color: #de73ff; }
+        
+        /* Used for error messages, deleted content in explanations, warnings;
+           In CS context: exceptions, error states, failures, bugs, vulnerabilities,
+           security threats, deprecated features, memory leaks, race conditions, deadlocks */
+        .odp-brightRed { color: #be5046; }
+        
+        /* Primary text color for UI elements and important text, button labels;
+           In CS context: core concepts, key principles, algorithm names, paradigm names */
+        .odp-brightWhite { color: #e6e6e6; }
+        
+        /* Used for highlighting parameters, object attributes, property accesses;
+           In CS context: function parameters, method arguments, configuration options,
+           template variables, environment variables, feature flags */
+        .odp-brightYellow { color: #e5c07b; }
+        
+        /* Used for cursor and selection highlights in editable fields;
+           In CS context: execution pointers, breakpoints, step-through debugging, 
+           current instruction pointers, memory inspection points */
+        .odp-cursorColor { color: #528BFF; }
+        
+        /* Used for operators, technical actions, logical operations, pipeline steps;
+           In CS context: data transformations, ETL processes, state mutations, computations,
+           algorithmic operations, data flow indicators, system transitions, queue operations */
+        .odp-cyan { color: #56b6c2; }
+        
+        /* Default text color for most content in the cards, standard code, descriptions;
+           In CS context: general explanations, code outlines, pseudocode, algorithm descriptions */
+        .odp-foreground { color: #ABB2BF; }
+        
+        /* Used for strings, web-related terms, URLs, file paths, output text;
+           In CS context: web technologies (HTML, CSS, HTTP), network concepts,
+           frontend frameworks, UI/UX terminology, rendering processes, DOM elements,
+           accessibility terms, internationalization, user interaction patterns */
+        .odp-green { color: #98c379; }
+        
+        /* Used for keywords, protocol names, programming languages, frameworks, libraries;
+           In CS context: language-specific keywords (if, for, class, async), type names,
+           framework names (React, Angular, Django), design patterns, architectural patterns,
+           programming paradigms (OOP, FP), middleware components */
+        .odp-purple { color: #c678dd; }
+        
+        /* Used for variables, negation terms, hardware components, tags, errors;
+           In CS context: variable names, field names, error conditions, exception names,
+           DOM elements, components, instances, hardware references, memory addresses,
+           resource identifiers, destructive operations, system interrupts */
+        .odp-red { color: #e06c75; }
+        
+        /* Used for selection backgrounds, highlighted content;
+           In CS context: selected code blocks, diff highlights, comparison sections */
+        .odp-selectionBackground { background-color: #ABB2BF; }
+        
+        /* Used for punctuation, secondary UI elements, structural elements;
+           In CS context: brackets, parentheses, syntactic elements, separators,
+           structural markers, delimiters, line terminators */
+        .odp-white { color: #D7DAE0; }
+        
+        /* Used for numbers, architecture concepts, attributes, identifiers;
+           In CS context: numeric literals, constants, enum values, port numbers,
+           status codes, bit flags, bitmasks, version numbers, indices, coordinates,
+           memory addresses, capacities, performance metrics, database fields */
+        .odp-yellow { color: #d19a66; }
 
         /* Option styling */
         .option {
