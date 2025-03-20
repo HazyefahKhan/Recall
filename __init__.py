@@ -2200,14 +2200,14 @@ def format_code_block(code, language=None):
     </div>
     '''
 
-class ExamInputDialog(QDialog):
+class RecallInputDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
         self.load_last_deck()  # Load last selected deck
         
     def setup_ui(self):
-        self.setWindowTitle("Create Exam Question")
+        self.setWindowTitle("Create Recall Question")
         self.setMinimumWidth(800)
         
         layout = QVBoxLayout(self)
@@ -2264,7 +2264,7 @@ ___""")
 
     def load_last_deck(self):
         """Load the last selected deck from Anki's configuration."""
-        last_deck_id = mw.pm.profile.get('exam_simulator_last_deck', None)
+        last_deck_id = mw.pm.profile.get('recall_last_deck', None)
         if last_deck_id is not None:
             # Find the index of the last used deck in the combo box
             index = self.deck_combo.findData(last_deck_id)
@@ -2274,7 +2274,7 @@ ___""")
     def save_last_deck(self):
         """Save the currently selected deck ID to Anki's configuration."""
         deck_id = self.deck_combo.currentData()
-        mw.pm.profile['exam_simulator_last_deck'] = deck_id
+        mw.pm.profile['recall_last_deck'] = deck_id
 
     def parse_input(self):
         text = self.input_text.toPlainText()
@@ -2339,11 +2339,15 @@ ___""")
             correct_count = len(sections['correct_options'])
             incorrect_count = len(sections['incorrect_options'])
             
-            # Create note with version number
-            model_name = f"ExamCard{correct_count}{incorrect_count}"
+            # Create note with appropriate model name
+            if correct_count == 1 and incorrect_count == 1:
+                model_name = "Recall"
+            else:
+                model_name = f"Recall{correct_count}{incorrect_count}"
+                
             model = mw.col.models.by_name(model_name)
             if not model:
-                create_exam_note_type(correct_count, incorrect_count)
+                create_recall_note_type(correct_count, incorrect_count)
                 model = mw.col.models.by_name(model_name)
                 
             note = Note(mw.col, model)
@@ -2372,19 +2376,24 @@ ___""")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to create card: {str(e)}")
 
-def show_exam_input_dialog():
-    dialog = ExamInputDialog(mw)
+def show_recall_input_dialog():
+    dialog = RecallInputDialog(mw)
     dialog.exec()
 
 # Add menu item
-action = QAction("Create Exam Question", mw)
-action.triggered.connect(show_exam_input_dialog)
-action.setShortcut(QKeySequence("Ctrl+Shift+E"))  # Add keyboard shortcut
+action = QAction("Create Recall Question", mw)
+action.triggered.connect(show_recall_input_dialog)
+action.setShortcut(QKeySequence("Ctrl+Shift+R"))  # Updated keyboard shortcut
 mw.form.menuTools.addAction(action)
 
-def create_exam_note_type(correct_options, incorrect_options):
-    """Create an exam note type with code examples."""
-    model_name = f"ExamCard{correct_options}{incorrect_options}"
+def create_recall_note_type(correct_options, incorrect_options):
+    """Create a recall note type with code examples."""
+    # Rename from ExamCard to Recall with special case for 1-1 configuration
+    if correct_options == 1 and incorrect_options == 1:
+        model_name = "Recall"
+    else:
+        model_name = f"Recall{correct_options}{incorrect_options}"
+    
     if model_name not in mw.col.models.all_names():
         mm = mw.col.models
         m = mm.new(model_name)
@@ -2653,7 +2662,7 @@ def create_exam_note_type(correct_options, incorrect_options):
         }
         
         /* One Dark Pro Syntax Highlighting */
-        /* Main background color for the exam card UI and code editor backgrounds */
+        /* Main background color for the Recall card UI and code editor backgrounds */
         .odp-background { background-color: #282C34; }
         
         /* Used for UI container backgrounds, inactive elements, and secondary panels;
@@ -3050,8 +3059,11 @@ def create_exam_note_type(correct_options, incorrect_options):
         return m
 
 def init():
-    # Create exam card type - only 1 correct, 3 incorrect options
-    create_exam_note_type(1, 3)  # ExamCard13vx (1 correct, 3 incorrect options)
+    # Create default Recall card (1 correct, 1 incorrect option)
+    create_recall_note_type(1, 1)
+    
+    # Create card with 1 correct, 3 incorrect options (will be named Recall13)
+    create_recall_note_type(1, 3)
 
 # Add the init hook
 gui_hooks.profile_did_open.append(init) 
