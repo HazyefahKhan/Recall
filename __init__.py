@@ -6,9 +6,86 @@ from anki.notes import Note
 from anki.utils import html_to_text_line
 import re
 import markdown
+import urllib.request
+import urllib.parse
+import urllib.error
+import os
+import hashlib
+import re
 
 def convert_markdown_to_html(text):
     """Convert markdown text to HTML with proper formatting and One Dark Pro syntax highlighting."""
+    # Define a helper function to escape HTML entities
+    def html_escape(text):
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
+    
+    # Helper function to download external images and save them to Anki's media collection
+    def retrieve_external_image(url):
+        try:
+            # Generate a filename for the image
+            # Use the last part of the URL path, or a hash if that doesn't work
+            filename = os.path.basename(urllib.parse.urlparse(url).path)
+            # Ensure the filename is valid and not too long
+            if not filename or len(filename) > 50 or not re.match(r'^[a-zA-Z0-9._-]+$', filename):
+                # Use a hash of the URL as the filename with the correct extension
+                file_ext = os.path.splitext(filename)[1] if filename else '.jpg'
+                if not file_ext or len(file_ext) < 2:
+                    file_ext = '.jpg'  # Default to .jpg if no extension
+                filename = hashlib.md5(url.encode('utf-8')).hexdigest() + file_ext
+            
+            # Check if the file already exists in media collection
+            if not os.path.exists(os.path.join(mw.col.media.dir(), filename)):
+                # Download the image
+                req = urllib.request.Request(
+                    url, 
+                    headers={'User-Agent': 'Mozilla/5.0 (Anki Image Downloader)'}
+                )
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    image_data = response.read()
+                
+                # Save the image to Anki's media collection
+                with open(os.path.join(mw.col.media.dir(), filename), 'wb') as f:
+                    f.write(image_data)
+            
+            return filename
+        except Exception as e:
+            print(f"Error retrieving image {url}: {e}")
+            return url  # Return the original URL if download fails
+    
+    # First pass: directly convert Markdown image syntax to HTML before any other processing
+    def convert_images(text):
+        # Match image markdown pattern and directly convert to HTML
+        image_pattern = r'!\[(.*?)\]\((.*?)\)'
+        
+        def image_replacer(match):
+            alt_text = html_escape(match.group(1))
+            url = match.group(2).strip()
+            
+            # For external URLs, try to download the image to Anki's media collection
+            if url.startswith(('http://', 'https://')):
+                try:
+                    # Download the image and get the local filename
+                    filename = retrieve_external_image(url)
+                    return f'<img src="{filename}" alt="{alt_text}" style="max-width: 100%;">'
+                except Exception as e:
+                    # If download fails, use the original URL but with warning text
+                    print(f"Failed to download image {url}: {e}")
+                    return f'<img src="{url}" alt="{alt_text}" style="max-width: 100%;"> (external image - may not display properly)'
+            else:
+                # Local image - handle relative paths
+                return f'<img src="{url}" alt="{alt_text}">'
+        
+        return re.sub(image_pattern, image_replacer, text)
+    
+    # Convert inline code to HTML directly before any other processing
+    def convert_inline_code(text):
+        code_pattern = r'`([^`]+)`'
+        return re.sub(code_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+    
+    # First pass - directly convert images and inline code
+    text = convert_images(text)
+    text = convert_inline_code(text)
+    
     # Helper function to prevent highlighting text that's already in span tags
     # This prevents nested span tags and resolves issues with overlapping highlighting patterns
     # which would otherwise result in malformed HTML like:
@@ -17,20 +94,25 @@ def convert_markdown_to_html(text):
         # Use a more precise regex for span tags that avoids overly greedy matching
         # Non-greedy matching with specific class pattern for our syntax highlighting
         span_pattern = r'<span class="odp-[^"]*">[^<>]*?</span>'
+        img_pattern = r'<img[^>]*>'
+        code_pattern = r'<code>[^<>]*</code>'
         
-        # Split the text into chunks (spans and non-spans)
+        # Combined pattern to find all protected elements
+        protected_pattern = f'({span_pattern}|{img_pattern}|{code_pattern})'
+        
+        # Split the text into chunks (protected and non-protected)
         chunks = []
         last_end = 0
         
-        # Find all existing span tags with our specific class pattern
-        for match in re.finditer(span_pattern, text):
+        # Find all existing protected elements
+        for match in re.finditer(protected_pattern, text):
             start, end = match.span()
             
-            # Add text before the span
+            # Add text before the protected element
             if start > last_end:
                 chunks.append((text[last_end:start], False))
             
-            # Add the span
+            # Add the protected element
             chunks.append((match.group(), True))
             last_end = end
         
@@ -38,10 +120,10 @@ def convert_markdown_to_html(text):
         if last_end < len(text):
             chunks.append((text[last_end:], False))
         
-        # Process only non-span chunks
+        # Process only non-protected chunks
         result = ""
-        for chunk, is_span in chunks:
-            if is_span:
+        for chunk, is_protected in chunks:
+            if is_protected:
                 result += chunk
             else:
                 result += re.sub(pattern, replacement, chunk, flags=flags)
@@ -60,7 +142,7 @@ def convert_markdown_to_html(text):
     # Convert double tildes to del tags
     text = re.sub(r'~~([^~\n]+)~~', r'<del>\1</del>', text)
 
-    # Now use safe_highlight for all syntax highlighting patterns
+    # Apply all the syntax highlighting with safe_highlight
     # Example of converting the first few patterns:
     
     # Apply syntax highlighting to protocols, API endpoints, and network operations (blue)
@@ -3062,8 +3144,6 @@ def init():
     # Create default Recall card (1 correct, 1 incorrect option)
     create_recall_note_type(1, 1)
     
-    # Create card with 1 correct, 3 incorrect options (will be named Recall13)
-    create_recall_note_type(1, 3)
 
 # Add the init hook
 gui_hooks.profile_did_open.append(init) 
