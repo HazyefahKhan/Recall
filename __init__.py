@@ -85,8 +85,9 @@ def convert_markdown_to_html(text):
     
     # Convert inline code to HTML directly before any other processing
     def convert_inline_code(text):
-        code_pattern = r'`([^`]+)`'
-        return re.sub(code_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+        # This is now handled in the main function after processing code blocks
+        # Skip processing here to avoid double processing
+        return text
     
     # First pass - directly convert images and inline code
     text = convert_images(text)
@@ -129,6 +130,13 @@ def convert_markdown_to_html(text):
         return formatted_code
     
     text = re.sub(code_block_pattern, code_block_replacer, text, flags=re.DOTALL)
+    
+    # Handle double backticks (for inline code with literal backticks)
+    double_backtick_pattern = r'``([^`]+)``'
+    text = re.sub(double_backtick_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+    
+    # Handle single backticks for inline code (must be processed after triple and double backticks)
+    text = re.sub(r'(?<!`)`(?!`)(.*?)(?<!`)`(?!`)', lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
     
     # Convert headers
     for i in range(6, 0, -1):
@@ -978,8 +986,8 @@ def create_recall_note_type(correct_options, incorrect_options):
         return m
 
 def init():
-    # Create default Recall card (1 correct, 1 incorrect option)
-    create_recall_note_type(1, 1)
+    # Create default Recall12 card (1 correct, 2 incorrect options)
+    create_recall_note_type(1, 2)
     
 
 # Add the init hook
