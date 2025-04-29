@@ -58,9 +58,26 @@ def convert_markdown_to_html(text):
             print(f"Error retrieving image {url}: {e}")
             return url  # Return the original URL if download fails
     
-    # First pass: directly convert Markdown image syntax to HTML before any other processing
+    # STEP 1: Process and preserve code blocks FIRST (before any other processing)
+    # This ensures CSS comments and other special characters in code are preserved
+    code_blocks = {}
+    code_block_counter = 0
+    
+    def extract_code_blocks(match):
+        nonlocal code_block_counter
+        language = match.group(1).strip() or 'text'
+        code = match.group(2)
+        placeholder = f"CODE_BLOCK_PLACEHOLDER_{code_block_counter}"
+        code_blocks[placeholder] = format_code_block(code, language)
+        code_block_counter += 1
+        return placeholder
+    
+    code_block_pattern = r'```(.*?)\n(.*?)```'
+    text = re.sub(code_block_pattern, extract_code_blocks, text, flags=re.DOTALL)
+    
+    # STEP 2: Process images (and other elements that should be processed early)
+    # Match image markdown pattern and directly convert to HTML
     def convert_images(text):
-        # Match image markdown pattern and directly convert to HTML
         image_pattern = r'!\[(.*?)\]\((.*?)\)'
         
         def image_replacer(match):
@@ -83,16 +100,20 @@ def convert_markdown_to_html(text):
         
         return re.sub(image_pattern, image_replacer, text)
     
-    # Convert inline code to HTML directly before any other processing
+    text = convert_images(text)
+    
+    # STEP 3: Process inline code
     def convert_inline_code(text):
-        # This is now handled in the main function after processing code blocks
-        # Skip processing here to avoid double processing
+        # Handle double backticks (for inline code with literal backticks)
+        double_backtick_pattern = r'``([^`]+)``'
+        text = re.sub(double_backtick_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+        
+        # Handle single backticks for inline code
+        text = re.sub(r'(?<!`)`(?!`)(.*?)(?<!`)`(?!`)', lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+        
         return text
     
-    # First pass - directly convert images and inline code
-    text = convert_images(text)
-    text = convert_inline_code(text)
-    
+    # STEP 4: Process other markdown elements
     # Convert single tilde with backticks to del tags (removing backticks)
     text = re.sub(r'`~([^~\n]+)~`', r'~\1~', text)
     
@@ -120,23 +141,13 @@ def convert_markdown_to_html(text):
                   r'<span style="color: #61afef;">\1</span>', 
                   text, flags=re.DOTALL)
     
-    # Convert code blocks to HTML
-    code_block_pattern = r'```(.*?)\n(.*?)```'
+    # Process inline code (this must happen after color processing but before emphasis)
+    text = convert_inline_code(text)
     
-    def code_block_replacer(match):
-        language = match.group(1).strip() or 'text'
-        code = match.group(2)
-        formatted_code = format_code_block(code, language)
-        return formatted_code
-    
-    text = re.sub(code_block_pattern, code_block_replacer, text, flags=re.DOTALL)
-    
-    # Handle double backticks (for inline code with literal backticks)
-    double_backtick_pattern = r'``([^`]+)``'
-    text = re.sub(double_backtick_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
-    
-    # Handle single backticks for inline code (must be processed after triple and double backticks)
-    text = re.sub(r'(?<!`)`(?!`)(.*?)(?<!`)`(?!`)', lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+    # RESTORE CODE BLOCKS BEFORE EMPHASIS PROCESSING
+    # This prevents placeholders from being affected by emphasis formatting
+    for placeholder, code_html in code_blocks.items():
+        text = text.replace(placeholder, code_html)
     
     # Convert headers
     for i in range(6, 0, -1):
@@ -157,6 +168,10 @@ def convert_markdown_to_html(text):
     # Convert emphasis and strong emphasis
     text = re.sub(r'(?<!\*)\*(?!\*)([^\*\n]+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
     text = re.sub(r'\*\*([^\*\n]+?)\*\*', r'<strong>\1</strong>', text)
+    
+    # Add support for underscore-based emphasis and strong emphasis
+    text = re.sub(r'(?<!_)_(?!_)([^_\n]+?)(?<!_)_(?!_)', r'<em>\1</em>', text)
+    text = re.sub(r'__([^_\n]+?)__', r'<strong>\1</strong>', text)
     
     # Convert links - do this after the other formatting
     link_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
@@ -185,11 +200,9 @@ def format_code_block(code, language=None):
     
     code = '<br>'.join(lines)
     
-    # Only add language class if a valid language is specified
-    lang_class = f" class=\"language-{language}\"" if language and language.strip() else ""
     return f'''
     <div class="code-block">
-        <pre><code{lang_class}>{code}</code></pre>
+        <pre>{code}</pre>
     </div>
     '''
 
@@ -685,7 +698,7 @@ def create_recall_note_type(correct_options, incorrect_options):
         .odp-selectionBackground { background-color: #ABB2BF; }
         .odp-white { color: #D7DAE0; }
         .odp-yellow { color: #d19a66; }
-
+        
         /* Option styling */
         .option {
             margin: 15px 0;
@@ -727,10 +740,9 @@ def create_recall_note_type(correct_options, incorrect_options):
             line-height: 1.6;
         }
 
-        .explanation strong {
-            color: #98c379;
-            font-weight: bold;
-        }
+        /* Global text formatting colors */
+        strong { color: #e5c07b !important; }
+        em { color: #4dc4ff !important; }
 
         .explanation del {
             color: #e06c75;
@@ -951,12 +963,10 @@ def create_recall_note_type(correct_options, incorrect_options):
 
         /* Modified bold text coloring based on answer type */
         .correct-answer .explanation strong {
-            color: #98c379;
             font-weight: bold;
         }
 
         .incorrect-answer .explanation strong {
-            color: #e06c75;
             font-weight: bold;
         }
 
