@@ -21,14 +21,44 @@ This Anki plugin adds a versatile and interactive note type designed for active 
 
 ## Installation
 
-1.  Download the plugin files (`__init__.py`, `manifest.json`).
+1.  Download the plugin files from the repository.
 2.  Locate your Anki addons folder:
     *   Windows: `%APPDATA%\Anki2\addons21\`
     *   Mac: `~/Library/Application Support/Anki2/addons21/`
     *   Linux: `~/.local/share/Anki2/addons21/`
-3.  Create a new folder inside the `addons21` directory (e.g., `RecallPlugin`).
-4.  Copy the downloaded plugin files (`__init__.py`, `manifest.json`) into the newly created folder.
+3.  Create a new folder inside the `addons21` directory (e.g., `ExamSimulator` or `RecallPlugin`).
+4.  Copy all the plugin files and directories into the newly created folder, preserving the structure:
+    ```
+    ExamSimulator/
+    ├── __init__.py             # Main entry point
+    ├── manifest.json           # Add-on metadata
+    └── src/                    # Main module directory 
+        ├── __init__.py         # Package marker
+        ├── markdown/           # Markdown processing
+        │   ├── __init__.py
+        │   └── converter.py    
+        ├── ui/                 # User interface components
+        │   ├── __init__.py
+        │   └── dialog.py       
+        └── card_templates/     # Card templates and styling
+            ├── __init__.py
+            └── note_types.py
+    ```
 5.  Restart Anki.
+
+## Code Organization
+
+The plugin is organized in a modular structure for better maintainability:
+
+* **Main Module (`__init__.py`)**: Entry point and initialization
+* **Markdown Module (`src/markdown/`)**: Handles markdown parsing and HTML conversion
+  * `converter.py`: Contains the core markdown processing and HTML generation logic
+* **UI Module (`src/ui/`)**: Contains the user interface components
+  * `dialog.py`: Implements the input dialog and card creation logic
+* **Card Templates (`src/card_templates/`)**: Handles note type creation and styling
+  * `note_types.py`: Defines card templates, styling, and JavaScript functionality
+
+This modular organization makes the codebase easier to maintain and extend.
 
 ## Usage
 
@@ -281,7 +311,22 @@ Remember to:
     *   Code blocks within explanations are syntax-highlighted.
     *   HTML previews within explanations are rendered in iframes.
 
+## Development
+
+If you want to contribute to the development of this plugin:
+
+1. Fork or clone the repository
+2. Make your changes following the modular structure
+3. Test your changes thoroughly with Anki
+4. Submit a pull request or share your modifications
+
+The modular structure makes it easier to locate and modify specific components:
+* For markdown processing changes, look in `src/markdown/converter.py`
+* For UI changes, look in `src/ui/dialog.py`
+* For card template changes, look in `src/card_templates/note_types.py`
+
 ## Version History
 
+*   2.1.0: Refactored codebase for better maintainability with modular architecture
 *   2.0.0: Rebranded as "Recall" with focus on active recall learning, dynamic note types, Markdown enhancements (images, previews, PrismJS), interactive cards, and One Dark Pro styling.
 *   1.0.0: Initial release as "Exam Simulator MCQ".
