@@ -25,6 +25,37 @@ def convert_markdown_to_html(text):
     def html_escape(text):
         return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
     
+    # Extract Preview sections first (before any other processing)
+    preview_sections = {}
+    preview_counter = 0
+    
+    def extract_preview_sections(match):
+        nonlocal preview_counter
+        # The HTML content is inside the code block
+        html_code_block = match.group(2)
+        
+        # Check if we have a code block with html tag
+        code_match = re.match(r'```html\s*([\s\S]*?)\s*```', html_code_block, re.DOTALL)
+        if code_match:
+            # Extract the raw HTML content without the code block markers
+            html_content = code_match.group(1).strip()
+            placeholder = f"PREVIEW_SECTION_PLACEHOLDER_{preview_counter}"
+            
+            # Store both the formatted code block (for display) and the raw HTML (for rendering)
+            preview_sections[placeholder] = {
+                'code': format_code_block(html_content, 'html'),
+                'html': html_content
+            }
+            preview_counter += 1
+            return placeholder
+        
+        # If no code block with html tag is found, just keep the original text
+        return match.group(0)
+    
+    # Match "#### Preview" followed by a code block
+    preview_pattern = r'#### Preview\s*([\s\S]*?)(?=\n(?:---|\Z|#### ))'
+    text = re.sub(preview_pattern, extract_preview_sections, text, flags=re.DOTALL)
+    
     # Helper function to download external images and save them to Anki's media collection
     def retrieve_external_image(url):
         try:
@@ -114,17 +145,26 @@ def convert_markdown_to_html(text):
         return text
     
     # STEP 4: Process other markdown elements
-    # Convert single tilde with backticks to del tags (removing backticks)
-    text = re.sub(r'`~([^~\n]+)~`', r'~\1~', text)
+    # First, process inline code to protect content inside backticks
+    text = convert_inline_code(text)
     
-    # Convert double tilde with backticks to del tags (removing backticks)
-    text = re.sub(r'`~~([^~\n]+)~~`', r'~~\1~~', text)
+    # UPDATED TILDE HANDLING:
+    # 1. Explicitly preserve tildes in mathematical expressions and technical patterns
+    # - Replace tildes in common technical patterns (like ~/, ~username, etc.)
+    text = re.sub(r'(~\/|~[a-zA-Z0-9_-]+)', lambda m: m.group(0).replace('~', '&#126;'), text)
     
-    # Convert single tilde to del tags before processing markdown
-    text = re.sub(r'(?<!~)~([^~\n]+)~(?!~)', r'<del>\1</del>', text)
+    # - Preserve isolated tildes (that are clearly not part of strikethrough)
+    text = re.sub(r'(?<![~`\\])~(?![~\w])', r'&#126;', text)  # Isolated tildes not followed by word char
+    text = re.sub(r'(?<=\s)~(?=\s)', r'&#126;', text)         # Tildes between spaces
+    text = re.sub(r'(?<=\()~(?=[\w])', r'&#126;', text)       # Tilde after open parenthesis 
+    text = re.sub(r'(?<=[=:])~(?=[\w])', r'&#126;', text)     # Tilde after equals or colon
     
-    # Convert double tildes to del tags
-    text = re.sub(r'~~([^~\n]+)~~', r'<del>\1</del>', text)
+    # 2. Standard markdown strikethrough with double tildes
+    text = re.sub(r'~~([^~\n]+?)~~', r'<del>\1</del>', text)
+    
+    # 3. Special case: single tilde pairs that clearly wrap content for strikethrough
+    # This is a more restrictive pattern to avoid false positives
+    text = re.sub(r'(?<![~`\\])~([^\s~][^~\n]{1,40}?[^\s~])~(?![~])', r'<del>\1</del>', text)
 
     # Apply color for correct options (green)
     text = re.sub(r'(Correct Option:.*?(?=\n\n|\n[^\n]|\n$|$))', 
@@ -180,6 +220,25 @@ def convert_markdown_to_html(text):
     # Convert paragraphs (multiple newlines to paragraph breaks)
     text = re.sub(r'\n\s*\n', '\n<br><br>\n', text)
     
+    # FINAL STEP: Restore Preview sections with both code display and rendered HTML
+    for placeholder, content in preview_sections.items():
+        # Create a container with both the code display and the rendered HTML
+        preview_html = f'''
+        <div class="preview-container">
+            <div class="code-display">
+                <h5>HTML Code:</h5>
+                {content['code']}
+            </div>
+            <div class="preview-display">
+                <h5>Rendered Preview:</h5>
+                <div class="preview-result">
+                    <iframe srcdoc="{content['html'].replace('"', '&quot;')}" style="width:100%; height:300px; border:none;"></iframe>
+                </div>
+            </div>
+        </div>
+        '''
+        text = text.replace(placeholder, preview_html)
+    
     return text
 
 def format_code_block(code, language=None):
@@ -187,20 +246,62 @@ def format_code_block(code, language=None):
     # Clean up the code
     code = code.strip()
     
-    # Process the code block
+    # Pre-process the entire code block for multi-line CSS comments
+    if language and language.lower() in ['css', 'html', 'javascript', 'js']:
+        # First, create a list of all CSS comments and their positions
+        comment_positions = []
+        for match in re.finditer(r'/\*(.*?)\*/', code, flags=re.DOTALL):
+            comment_positions.append((match.start(), match.end(), match.group(1)))
+        
+        # Now replace comments one by one, from the end so positions remain valid
+        comment_positions.sort(reverse=True)
+        for start, end, content in comment_positions:
+            # Escape special characters
+            escaped_content = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            replacement = f'<span class="token comment">/*{escaped_content}*/</span>'
+            code = code[:start] + replacement + code[end:]
+    
+    # Process the code block line by line for remaining processing
     lines = []
     for line in code.split('\n'):
-        # Escape HTML special characters
-        line = (line.replace('&', '&amp;')
-                   .replace('<', '&lt;')
-                   .replace('>', '&gt;'))
-        # Add proper indentation
-        line = line.replace(' ', '&nbsp;')
-        lines.append(line)
+        # Escape HTML special characters (except for already processed comments)
+        if '<span class="token comment">' not in line:
+            line = (line.replace('&', '&amp;')
+                       .replace('<', '&lt;')
+                       .replace('>', '&gt;'))
+        
+        # Special handling for JS single-line comments
+        if language and language.lower() in ['javascript', 'js']:
+            # Pattern for single-line comments that avoids already processed spans
+            line = re.sub(r'(?<!<span class="token comment">)(//.*?)$', 
+                          r'<span class="token comment">\1</span>', line)
+        
+        # Add proper indentation (preserving spans)
+        parts = []
+        in_span = False
+        for part in re.split(r'(<span.*?>|</span>)', line):
+            if part.startswith('<span') or part == '</span>':
+                parts.append(part)
+                in_span = part.startswith('<span')
+            else:
+                parts.append(part.replace(' ', '&nbsp;') if not in_span else part)
+        
+        lines.append(''.join(parts))
     
     code = '<br>'.join(lines)
     
+    # Add CSS to ensure comments are properly styled
+    css_for_comments = """
+    <style>
+    .token.comment {
+        color: #5c6370 !important;
+        font-style: normal !important;
+    }
+    </style>
+    """
+    
     return f'''
+    {css_for_comments}
     <div class="code-block">
         <pre>{code}</pre>
     </div>
@@ -238,6 +339,13 @@ ___
 ##### Explanation
 [Insert detailed explanation on why this option is correct]
 
+#### Preview
+```html
+<!-- Optional HTML preview that will be rendered as-is -->
+<div style="background-color: #f0f0f0; padding: 10px;">
+  <p>This is a preview of HTML content</p>
+</div>
+```
 ___
 #### Incorrect Option
 [Insert option text here including] 
@@ -295,37 +403,81 @@ ___""")
         question_match = re.search(r'#### Question\s*\n(.*?)(?=\n(?:___|---)|\Z)', text, re.DOTALL)
         if question_match:
             sections['question'] = question_match.group(1).strip()
+            
+            # Check for preview section in question
+            preview_match = re.search(r'#### Preview\s*\n```html\s*(.*?)\s*```', question_match.group(1), re.DOTALL)
+            if preview_match:
+                # Store both the raw HTML and the code block for display
+                preview_html = preview_match.group(1).strip()
+                sections['question_preview'] = {
+                    'code': preview_html,  # The raw code to display
+                    'html': preview_html   # The HTML to render
+                }
         
         # Initialize correct options list
         sections['correct_options'] = []
         
-        # Find all correct options sections
-        correct_sections = re.finditer(
-            r'#### Correct Option\s*\n(.*?)(?=\n##### Explanation\s*\n)' +  # Option text (multi-line)
-            r'\n##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
-            text, re.DOTALL
-        )
+        # First, extract all complete option sections (between section markers)
+        section_markers = [m.start() for m in re.finditer(r'\n---\n', text)]
+        section_markers = [-1] + section_markers + [len(text)]
         
-        for match in correct_sections:
-            sections['correct_options'].append({
-                'option': match.group(1).strip(),
-                'explanation': match.group(2).strip()
-            })
+        option_sections = []
+        for i in range(len(section_markers) - 1):
+            start = section_markers[i] + 5 if i > 0 else 0  # Skip the --- marker except for first section
+            end = section_markers[i+1]
+            section = text[start:end].strip()
+            if section and ('#### Correct Option' in section or '#### Incorrect Option' in section):
+                option_sections.append(section)
         
-        # Extract incorrect options
-        incorrect_sections = re.finditer(
-            r'#### Incorrect Option\s*\n(.*?)(?=\n##### Explanation\s*\n)' +  # Option text (multi-line)
-            r'\n##### Explanation\s*\n(.*?)(?=\n(?:___|---)|\Z)',  # Explanation
-            text, re.DOTALL
-        )
+        # Now parse each option section
+        for section in option_sections:
+            # Determine if this is a correct or incorrect option
+            is_correct = '#### Correct Option' in section
+            
+            # Extract option text, explanation, and preview
+            option_match = re.search(
+                r'#### (Correct|Incorrect) Option\s*\n(.*?)(?=\n##### Explanation)',
+                section, re.DOTALL
+            )
+            
+            explanation_match = re.search(
+                r'##### Explanation\s*\n(.*?)(?=\n#### Preview|\Z)',
+                section, re.DOTALL
+            )
+            
+            preview_match = re.search(
+                r'#### Preview\s*\n```html\s*(.*?)\s*```',
+                section, re.DOTALL
+            )
+            
+            if option_match and explanation_match:
+                option_text = option_match.group(2).strip()
+                explanation_text = explanation_match.group(1).strip()
+                
+                preview_html = None
+                preview_code = None
+                if preview_match:
+                    preview_html = preview_match.group(1).strip()
+                    preview_code = preview_html
+                
+                option_data = {
+                    'option': option_text,
+                    'explanation': explanation_text,
+                    'preview_code': preview_code,
+                    'preview_html': preview_html
+                }
+                
+                if is_correct:
+                    sections['correct_options'].append(option_data)
+                else:
+                    if 'incorrect_options' not in sections:
+                        sections['incorrect_options'] = []
+                    sections['incorrect_options'].append(option_data)
         
-        sections['incorrect_options'] = []
-        for match in incorrect_sections:
-            sections['incorrect_options'].append({
-                'option': match.group(1).strip(),
-                'explanation': match.group(2).strip()
-            })
-
+        # Make sure incorrect_options exists even if empty
+        if 'incorrect_options' not in sections:
+            sections['incorrect_options'] = []
+            
         return sections
 
     def create_card(self):
@@ -359,18 +511,49 @@ ___""")
             note = Note(mw.col, model)
             
             # Fill note fields with converted HTML
-            note['Question'] = convert_markdown_to_html(sections['question'])
+            question_html = convert_markdown_to_html(sections['question'])
+            
+            # Add question preview section if exists
+            if 'question_preview' in sections:
+                preview_data = sections['question_preview']
+                preview_html = self.create_preview_html(preview_data['code'], preview_data['html'])
+                question_html += preview_html
+            
+            note['Question'] = question_html
             
             # Add correct options
             for i, correct in enumerate(sections['correct_options'], 1):
                 suffix = str(i) if correct_count > 1 else ""
-                note[f'CorrectOption{suffix}'] = convert_markdown_to_html(correct['option'])
-                note[f'CorrectExplanation{suffix}'] = convert_markdown_to_html(correct['explanation'])
+                
+                # Convert option and explanation to HTML
+                option_html = convert_markdown_to_html(correct['option'])
+                explanation_html = convert_markdown_to_html(correct['explanation'])
+                
+                # Add preview HTML if it exists - here was the issue
+                if correct['preview_html']:
+                    # Create a custom preview HTML section with both code and rendered view
+                    preview_html = self.create_preview_html(correct['preview_code'], correct['preview_html'])
+                    # Append this to the explanation
+                    explanation_html += preview_html
+                
+                note[f'CorrectOption{suffix}'] = option_html
+                note[f'CorrectExplanation{suffix}'] = explanation_html
             
             # Add incorrect options
             for i, incorrect in enumerate(sections['incorrect_options'], 1):
-                note[f'IncorrectOption{i}'] = convert_markdown_to_html(incorrect['option'])
-                note[f'IncorrectExplanation{i}'] = convert_markdown_to_html(incorrect['explanation'])
+                # Convert option and explanation to HTML
+                option_html = convert_markdown_to_html(incorrect['option'])
+                explanation_html = convert_markdown_to_html(incorrect['explanation'])
+                
+                # Add preview HTML if it exists
+                if incorrect['preview_html']:
+                    # Create a custom preview HTML section with both code and rendered view
+                    preview_html = self.create_preview_html(incorrect['preview_code'], incorrect['preview_html'])
+                    # Append this to the explanation
+                    explanation_html += preview_html
+                
+                note[f'IncorrectOption{i}'] = option_html
+                note[f'IncorrectExplanation{i}'] = explanation_html
             
             # Add note to selected deck
             mw.col.add_note(note, deck_id)
@@ -380,7 +563,28 @@ ___""")
             self.accept()
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create card: {str(e)}")
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(self, "Error", f"Failed to create card: {str(e)}\n\nDetails:\n{error_details}")
+
+    def create_preview_html(self, code, html):
+        """Create a formatted HTML container with both code display and rendered preview."""
+        # Add debug information as a comment
+        return f'''
+        <!-- Preview HTML section -->
+        <div class="preview-container">
+            <div class="code-display">
+                <h5>HTML Code:</h5>
+                {format_code_block(code, 'html')}
+            </div>
+            <div class="preview-display">
+                <h5>Rendered Preview:</h5>
+                <div class="preview-result">
+                    <iframe srcdoc="{html.replace('"', '&quot;')}" style="width:100%; height:300px; border:none;"></iframe>
+                </div>
+            </div>
+        </div>
+        '''
 
 def show_recall_input_dialog():
     dialog = RecallInputDialog(mw)
@@ -677,6 +881,59 @@ def create_recall_note_type(correct_options, incorrect_options):
             transition: all 0.3s ease;
         }
         
+        /* Preview Container Styling */
+        .preview-container {
+            margin: 25px 0;
+            border: 1px solid rgba(97, 175, 239, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: rgba(30, 34, 42, 0.6);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .code-display {
+            background-color: #21252b;
+            padding: 15px;
+            border-bottom: 1px solid rgba(97, 175, 239, 0.2);
+        }
+        
+        .code-display h5 {
+            color: #56b6c2;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        
+        .preview-display {
+            padding: 15px;
+        }
+        
+        .preview-display h5 {
+            color: #98c379;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        
+        .preview-result {
+            background-color: #fff;
+            color: #000;
+            border-radius: 8px;
+            padding: 0;
+            overflow: hidden;
+            max-height: 400px;
+        }
+        
+        .preview-result iframe {
+            width: 100%;
+            height: 300px;
+            border: none;
+            background-color: #fff;
+            border-radius: 8px;
+        }
+        
         /* One Dark Pro Colors */
         .odp-background { background-color: #282C34; }
         .odp-black { color: #3F4451; }
@@ -741,9 +998,6 @@ def create_recall_note_type(correct_options, incorrect_options):
         }
 
         /* Global text formatting colors */
-        strong { color: #e5c07b !important; }
-        em { color: #4dc4ff !important; }
-
         .explanation del {
             color: #e06c75;
             text-decoration: line-through;
