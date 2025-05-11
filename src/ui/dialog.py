@@ -112,14 +112,21 @@ ___""")
             sections['question'] = question_match.group(1).strip()
             
             # Check for preview section in question
-            preview_match = re.search(r'#### Preview\s*\n```html\s*(.*?)\s*```', question_match.group(1), re.DOTALL)
+            # Regex to capture language type and code block
+            preview_regex = r'#### Preview\s*\n```(\w*)\s*([\s\S]*?)\s*```'
+            preview_match = re.search(preview_regex, question_match.group(1), re.DOTALL)
+            
             if preview_match:
-                # Store both the raw HTML and the code block for display
-                preview_html = preview_match.group(1).strip()
+                language = preview_match.group(1).lower().strip() if preview_match.group(1) else 'html' # Default to html if no lang specified
+                code_content = preview_match.group(2).strip()
+                
                 sections['question_preview'] = {
-                    'code': preview_html,  # The raw code to display
-                    'html': preview_html   # The HTML to render
+                    'language': language,
+                    'code': code_content
                 }
+                # For HTML/CSS/JS, we also want to specify the content for iframe rendering
+                if language in ['html', 'css', 'javascript', 'js']:
+                    sections['question_preview']['html_to_render'] = code_content
         
         # Initialize correct options list
         sections['correct_options'] = []
@@ -153,7 +160,7 @@ ___""")
             )
             
             preview_match = re.search(
-                r'#### Preview\s*\n```html\s*(.*?)\s*```',
+                r'#### Preview\s*\n```(\w*)\s*([\s\S]*?)\s*```',
                 section, re.DOTALL
             )
             
@@ -161,17 +168,22 @@ ___""")
                 option_text = option_match.group(2).strip()
                 explanation_text = explanation_match.group(1).strip()
                 
-                preview_html = None
-                preview_code = None
+                option_preview_data = None
                 if preview_match:
-                    preview_html = preview_match.group(1).strip()
-                    preview_code = preview_html
+                    language = preview_match.group(1).lower().strip() if preview_match.group(1) else 'html' # Default to html
+                    code_content = preview_match.group(2).strip()
+                    option_preview_data = {
+                        'language': language,
+                        'code': code_content
+                    }
+                    # For HTML/CSS/JS, specify content for iframe rendering
+                    if language in ['html', 'css', 'javascript', 'js']:
+                        option_preview_data['html_to_render'] = code_content
                 
                 option_data = {
                     'option': option_text,
                     'explanation': explanation_text,
-                    'preview_code': preview_code,
-                    'preview_html': preview_html
+                    'preview_data': option_preview_data # Changed from preview_code/preview_html
                 }
                 
                 if is_correct:
@@ -224,8 +236,13 @@ ___""")
             # Add question preview section if exists
             if 'question_preview' in sections:
                 preview_data = sections['question_preview']
-                preview_html = self.create_preview_html(preview_data['code'], preview_data['html'])
-                question_html += preview_html
+                # Pass language, code, and html_to_render (if available)
+                preview_html_content = self.create_general_preview_display_html(
+                    preview_data['language'],
+                    preview_data['code'],
+                    preview_data.get('html_to_render') 
+                )
+                question_html += preview_html_content
             
             note['Question'] = question_html
             
@@ -238,11 +255,16 @@ ___""")
                 explanation_html = convert_markdown_to_html(correct['explanation'])
                 
                 # Add preview HTML if it exists
-                if correct['preview_html']:
-                    # Create a custom preview HTML section with both code and rendered view
-                    preview_html = self.create_preview_html(correct['preview_code'], correct['preview_html'])
+                if correct.get('preview_data'):
+                    preview_data = correct['preview_data']
+                    # Create a custom preview HTML section
+                    preview_html_content = self.create_general_preview_display_html(
+                        preview_data['language'],
+                        preview_data['code'],
+                        preview_data.get('html_to_render')
+                    )
                     # Append this to the explanation
-                    explanation_html += preview_html
+                    explanation_html += preview_html_content
                 
                 note[f'CorrectOption{suffix}'] = option_html
                 note[f'CorrectExplanation{suffix}'] = explanation_html
@@ -254,11 +276,16 @@ ___""")
                 explanation_html = convert_markdown_to_html(incorrect['explanation'])
                 
                 # Add preview HTML if it exists
-                if incorrect['preview_html']:
-                    # Create a custom preview HTML section with both code and rendered view
-                    preview_html = self.create_preview_html(incorrect['preview_code'], incorrect['preview_html'])
+                if incorrect.get('preview_data'):
+                    preview_data = incorrect['preview_data']
+                    # Create a custom preview HTML section
+                    preview_html_content = self.create_general_preview_display_html(
+                        preview_data['language'],
+                        preview_data['code'],
+                        preview_data.get('html_to_render')
+                    )
                     # Append this to the explanation
-                    explanation_html += preview_html
+                    explanation_html += preview_html_content
                 
                 note[f'IncorrectOption{i}'] = option_html
                 note[f'IncorrectExplanation{i}'] = explanation_html
@@ -275,24 +302,50 @@ ___""")
             error_details = traceback.format_exc()
             QMessageBox.critical(self, "Error", f"Failed to create card: {str(e)}\n\nDetails:\n{error_details}")
 
-    def create_preview_html(self, code, html):
-        """Create a formatted HTML container with both code display and rendered preview."""
-        # Add debug information as a comment
-        return f'''
-        <!-- Preview HTML section -->
-        <div class="preview-container">
-            <div class="code-display">
-                <h5>HTML Code:</h5>
-                {format_code_block(code, 'html')}
-            </div>
+    def create_general_preview_display_html(self, language, code, html_to_render_in_iframe=None):
+        """Create a formatted HTML container for code display and optional rendered preview."""
+        
+        # Determine the title for the code block
+        code_block_title = f"{language.upper() if language else 'Code'} Source:" if language.lower() in ['html', 'css', 'javascript', 'js'] and html_to_render_in_iframe else f"{language.upper() if language else 'Code'} Preview:"
+
+        # Always include the code display part
+        formatted_code = format_code_block(code, language)
+        code_display_html = f'''
+        <div class="code-display">
+            <h5>{code_block_title}</h5>
+            {formatted_code}
+        </div>
+        '''
+
+        # If it's a web language and there's content to render, add the iframe preview
+        if language.lower() in ['html', 'css', 'javascript', 'js'] and html_to_render_in_iframe:
+            # Sanitize for iframe's srcdoc
+            sanitized_html_for_iframe = html_to_render_in_iframe.replace('"', '&quot;')
+            
+            rendered_preview_html = f'''
             <div class="preview-display">
                 <h5>Rendered Preview:</h5>
                 <div class="preview-result">
-                    <iframe srcdoc="{html.replace('"', '&quot;')}" style="width:100%; height:300px; border:none;"></iframe>
+                    <iframe srcdoc="{sanitized_html_for_iframe}" style="width:100%; height:300px; border:none;"></iframe>
                 </div>
             </div>
-        </div>
-        '''
+            '''
+            
+            return f'''
+            <!-- Preview HTML section for {language} -->
+            <div class="preview-container">
+                {code_display_html}
+                {rendered_preview_html}
+            </div>
+            '''
+        else:
+            # For other languages, or if no specific iframe content, just show the code
+            return f'''
+            <!-- Preview Code section for {language} -->
+            <div class="preview-container-code-only">
+                {code_display_html}
+            </div>
+            '''
 
 def show_recall_input_dialog():
     """Show the recall input dialog."""

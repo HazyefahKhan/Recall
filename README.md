@@ -68,105 +68,99 @@ This plugin is designed to work with Markdown content structured in a specific w
 
 Use the following prompt to extract key facts, code examples, and images from a source passage:
 
-```plaintext
-Given the following passage:
+`````plaintext
+**Given the following passage:**
 
 ---
+
 [Insert passage here]
+
 ---
 
-Instructions:
+**Instructions:**
 
-1.  **Extract distinct, standalone facts** from the provided passage. Each fact must explicitly relate to the central topic or primary theme of the passage, ensuring relevance and coherence.
+1. **Extract distinct, standalone, bite-sized facts** from the provided passage. Each fact must be concise, focused, and explicitly relate to the central topic or primary theme of the passage, ensuring relevance, coherence, and clear comprehensibility at a glance.
+    
+2. **Present each bite-sized fact explicitly in bullet-point form**. Each bullet point should represent exactly one discrete, atomic piece of information.
+    
+3. **If images are present**, directly insert each image below its associated bite-sized bullet-point in markdown format (`![]()`), strictly as supporting evidence for clearly stated textual facts. **Do NOT create a fact based solely around an image**; images must exclusively substantiate textual statements.
+    
+4. If a fact clearly warrants an illustrative **code example**, insert the code snippet immediately below its corresponding bite-sized fact as follows:
+    
+    - For **CSS-only** examples, provide exactly one concise, fully-contained HTML snippet embedding CSS within a `<style>` tag inside the HTML's `<head>` section.
+        
+    - For examples involving **JavaScript**, similarly provide exactly one concise, fully-contained HTML snippet embedding the JavaScript inside a `<script>` tag positioned just before the closing `</body>` tag.
+        
+    - For combined examples involving **HTML, CSS, and JavaScript**, provide precisely one fully self-contained HTML snippet embedding CSS within `<style>` tags in the `<head>` section and JavaScript inside `<script>` tags at the end of `<body>`.
+        
+    
+    **In every case**, ensure the provided HTML snippet is immediately ready to render directly in a browser without requiring external resources or additional code blocks.
+    
+5. **Strictly avoid pronouns and ambiguous references** (e.g., "it," "they," "this," "that"). Always explicitly state the specific subjects or entities involved to maximize clarity and eliminate ambiguity.
+    
+6. **Ensure each bullet-point is completely self-contained**:
+    
+    - **Do NOT reference "the article," "this passage," or any context-dependent phrases.**
+        
+    - Each bullet-point must logically and contextually stand entirely on its own, clearly understandable to anyone unfamiliar with the original passage.
+        
+7. Go over each bite-sized fact and if it is relevant and has enough context to include a HTML, CSS, or JavaScript examples then do so to visually demonstrate or clarify the fact’s concept explicitly, include a "Preview" block exactly as follows, directly beneath the associated fact.  :
+    
 
-2.  **Present each fact explicitly in bullet-point form**.
-
-3.  **If images are present**, include each image directly under its relevant bullet-point(s) in markdown format (`![]()`), strictly as supporting evidence for the stated fact. **Do NOT create a fact based solely around an image**; images should only substantiate clearly stated textual facts.
-
-4.  If the fact is relevant enough to include a code example, add the code example directly beneath the associated fact.
-    *   For examples involving **CSS only**, provide one single, complete HTML code block explicitly embedding the CSS within a `<style>` tag inside the HTML's `<head>` section.
-    *   For examples involving **JavaScript**, similarly provide a single complete HTML code block embedding any required JavaScript within a `<script>` tag positioned at the end of the HTML's `<body>` section.
-    *   If a code example combines **HTML, CSS, and JavaScript**, provide a single, fully self-contained HTML snippet embedding CSS in `<style>` tags in `<head>` and JavaScript within `<script>` tags before the closing `</body>` tag.
-
-    **In all cases**, the resulting HTML snippet must be immediately ready to render directly in a browser without requiring external resources or additional separate code blocks.
-
-5.  **Avoid using pronouns or ambiguous terms** (e.g., "it," "they," "this," "that"). Clearly and explicitly reference the specific subjects or entities involved to maintain maximum clarity and precision.
-
-6.  **Ensure each bullet-point is fully self-contained**:
-    *   **Do NOT reference "the article," "this passage," or any similar context-dependent terms.**
-    *   Each bullet-point must stand alone logically and contextually, fully understandable to someone unfamiliar with the original passage.
-
-7.  If a fact involves HTML, CSS, or JavaScript examples intended to visually demonstrate or illustrate the fact's concept clearly, **add a "Preview" block directly below the fact in the following exact format**:
-
-    ```markdown
-    #### Preview
-    ```html
-    [Insert the complete, directly renderable HTML snippet here, explicitly including embedded CSS or JavaScript when necessary]
-    ```
+````markdown
+#### Preview
+```html
+[Insert the complete, directly renderable HTML snippet here, explicitly including embedded CSS or JavaScript when necessary]
 ```
+````
+`````
+
 
 **Stage 2: Multiple-Choice Question Generation**
 
 Using the facts extracted in Stage 1, use the following prompt to generate multiple-choice questions:
 
 ```plaintext
-Now, using each self-contained bullet-point fact extracted, create separate multiple-choice questions adhering strictly to these enhanced criteria:
 
-1.  **Begin each question explicitly with the header "Question"** (no numbering or variations).
+**Now, using each self-contained bite-sized bullet-point fact extracted, create separate multiple-choice questions adhering strictly to these enhanced criteria**:
 
-2.  **Write a concise, bite-sized question directly testing the single extracted fact** from the corresponding bullet-point.
+1. **Begin each question explicitly with the header "Question"** (no numbering or variations).
 
-3.  **The question itself must be completely self-contained.**
+2. **Write a concise, bite-sized question directly testing the single extracted fact** from the corresponding bullet-point.
 
-    *   Do **not** reference external examples, code snippets, preview blocks, or context that isn't explicitly and fully included within the question's text itself—even if such information is available in the answer choices or elsewhere.
+3. Provide exactly **3 answer choices**, clearly formatted as bullet points:
+   - Exactly **one choice** must accurately reflect the extracted bullet-point fact.
+   - Generate exactly **two plausible distractors** seem similar to one choice that accurately reflects the extracted bullet point. Ensure:
+     - Are positively phrased, realistic, logically coherent, and believable.
+     - Avoid overly negative, obviously false, or exaggerated statements.
+     - Require careful consideration and genuine understanding to distinguish from the correct choice.
 
-4.  Provide exactly **3 answer choices**, clearly formatted as bullet points:
+4. Include any supporting images directly beneath the Answer Key.
 
-    *   Exactly **one choice** must accurately reflect the extracted bullet-point fact.
+5. Include any supporting code examples and/or **Preview blocks** (HTML/CSS/JavaScript for browser rendering) directly beneath the Answer Key exactly as extracted from the original fact. The Preview block, if present, should retain its original markdown formatting precisely as provided, without alterations or additional headings.
 
-    *   Generate exactly **two plausible distractors** that:
+6. Ensure all three answer choices:
+   - Are similar in length, complexity, and formatting.
+   - Avoid noticeable differences in positivity or negativity that might unintentionally reveal the correct answer.
 
-        *   Are positively phrased, realistic, logically coherent, and believable.
+7. Guarantee each question is fully independent and understandable without additional context. Ensure that the context needed to answer the question is not buried under the Correct or Incorrect Options or their Explanations.
 
-        *   Are carefully crafted to be conceptually similar and equally plausible at first glance, requiring genuine understanding rather than superficial recognition to distinguish from the correct choice.
+8. Immediately follow each question with an **Answer Key**, clearly labeled and containing only the exact text of the correct choice.
 
-        *   **Avoid explicitly using key terminology or exact phrases directly mentioned in the question within the answer choices. Instead, phrase answers in general or abstract conceptual terms.**
+9. Explicitly confirm:
+   - **No correct answer choice is repeated** across the entire question set, maintaining uniqueness.
+   - All three choices in every question are phrased positively or neutrally, avoiding negative phrasing or unrealistic exaggerations that hint at incorrect answers.
 
-5.  Include any supporting images directly beneath the Answer Key.
+**Example of Correct Implementation (Positive phrasing):**
+**Question**  
+What is the primary function of a web browser?
+- A web browser retrieves and displays web pages from servers.
+- A web browser manages network security and server hardware.
+- A web browser is used to change system settings.
 
-6.  Include any supporting code examples and/or **Preview blocks** (HTML/CSS/JavaScript for browser rendering) directly beneath the Answer Key exactly as extracted from the original fact. The Preview block, if present, should retain its original markdown formatting precisely as provided, without alterations or additional headings.
+**Answer Key**  
+A web browser retrieves and displays web pages from servers.
 
-7.  Ensure all three answer choices:
-
-    *   Are similar in length, complexity, formatting, and phrasing.
-
-    *   Avoid noticeable differences in positivity, negativity, or specificity that might unintentionally reveal the correct answer.
-
-8.  Guarantee each question is fully independent and understandable without additional context. **No external or implied context, examples, or references outside the explicit text of the question itself are permitted, even if included elsewhere.**
-
-9.  Immediately follow each question with an **Answer Key**, clearly labeled and containing only the exact text of the correct choice.
-
-10. Explicitly confirm:
-
-    *   **No correct answer choice is repeated** across the entire question set, maintaining uniqueness.
-
-    *   All three choices in every question are phrased positively or neutrally, avoiding negative phrasing or unrealistic exaggerations that hint at incorrect answers.
-
----
-
-**Example of Correct Implementation (General, Conceptually Challenging):**
-
-**Question**
-What effect does applying a certain CSS display property have when used on an inline element nested within text, enabling it to respect dimensions and spacing settings without disrupting the flow of surrounding text?
-
-*   It makes the element remain part of the inline flow, while enabling it to respect width, height, padding, and margin settings.
-
-*   It positions the element on a separate line, occupying available horizontal space while respecting width, height, padding, and margin settings.
-
-*   It allows the element to dynamically adjust internal layout and spacing, independently from surrounding inline content.
-
-**Answer Key**
-It makes the element remain part of the inline flow, while enabling it to respect width, height, padding, and margin settings.
 ```
 
 **Stage 3: Final Formatting for Anki Plugin**
@@ -214,12 +208,13 @@ ___
 
 Remember to:
 
-*   Retain all existing headings and subheadings exactly, including their sizes.
-*   Always list the **Correct Option** first, followed by **Incorrect Option**.
-*   Explanations must focus on teaching and building foundational knowledge rather than merely stating correctness.
-*   If any images are associated with the correct choice, always include these under the Correct Option's Explanation section.
-*   Ensure each Question is fully self-contained and does not reference external passages or other questions.
-*   Your response should strictly adhere to the provided structural format without additional commentary or deviations.
+- Retain all existing headings and subheadings exactly, including their sizes.
+- Always list the **Correct Option** first, followed by **Incorrect Option**.
+- Explanations must focus on teaching and building foundational knowledge rather than merely stating correctness.
+- If any images are associated with the correct choice, always include these under the Correct Option's Explanation section.
+- Ensure each Question is fully self-contained and does not reference external passages or other questions.
+- Your response should strictly adhere to the provided structural format without additional commentary or deviations.
+
 ```
 
 **Pasting into Anki**
