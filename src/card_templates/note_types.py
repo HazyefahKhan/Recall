@@ -206,23 +206,36 @@ def create_back_template(correct_options, incorrect_options):
         str: The back template HTML/JS
     """
     # Generate all items array based on the number of correct and incorrect options
+    hidden_data_divs_list = []
     all_items_array = []
     
     # Add correct options
     for i in range(correct_options):
         suffix = str(i + 1) if correct_options > 1 else ""
+        explanation_id = f"recall_explanation_correct_{suffix}" # Unique ID
+        # Store the raw field reference for the hidden div
+        hidden_data_divs_list.append(
+            f'<div id="{explanation_id}" style="display:none;">{{{{CorrectExplanation{suffix}}}}}</div>'
+        )
         all_items_array.append(
-            f"{{ content: `{{{{CorrectOption{suffix}}}}}`, explanation: `{{{{CorrectExplanation{suffix}}}}}`, isCorrect: true }}"
+            # Use simple string for ID, no URL encoding needed here for explanation_id
+            # Content still needs URL decoding as it might have special chars not suitable for direct JS string.
+            f'{{ content: decodeURIComponent("{{{{url:CorrectOption{suffix}}}}}"), explanation_id: "{explanation_id}", isCorrect: true }}'
         )
     
     # Add incorrect options
     for i in range(incorrect_options):
+        incorrect_suffix = str(i + 1) # Incorrect options always have a suffix
+        explanation_id = f"recall_explanation_incorrect_{incorrect_suffix}" # Unique ID
+        hidden_data_divs_list.append(
+            f'<div id="{explanation_id}" style="display:none;">{{{{IncorrectExplanation{incorrect_suffix}}}}}</div>'
+        )
         all_items_array.append(
-            f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, explanation: `{{{{IncorrectExplanation{i + 1}}}}}`, isCorrect: false }}"
+            f'{{ content: decodeURIComponent("{{{{url:IncorrectOption{incorrect_suffix}}}}}"), explanation_id: "{explanation_id}", isCorrect: false }}'
         )
     
-    # Join with commas
     all_items_str = ",\n".join(all_items_array)
+    hidden_data_divs_html = "\n".join(hidden_data_divs_list)
     
     return f"""
     {{{{FrontSide}}}}
@@ -231,6 +244,10 @@ def create_back_template(correct_options, incorrect_options):
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js" data-manual></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-csharp.min.js"></script>
     
+    <div id="recall_hidden_explanation_data" style="display:none;">
+        {hidden_data_divs_html}
+    </div>
+
     <!-- This container will hold all explanation entries in the randomized order -->
     <div class="answer" id="answers"></div>
 
@@ -242,6 +259,7 @@ def create_back_template(correct_options, incorrect_options):
 
         // HTML escape function to prevent HTML interpretation
         function htmlEscape(text) {{
+            if (typeof text !== 'string') return '';
             return text
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -253,42 +271,69 @@ def create_back_template(correct_options, incorrect_options):
         function buildAnswerContainers() {{
             try {{
                 var mappingStr = document.body.getAttribute('data-option-mapping');
-                if (!mappingStr) return; // No mapping found
+                if (!mappingStr) {{
+                    console.error('Recall Anki: data-option-mapping not found on body.');
+                    return; 
+                }}
                 var mapping = JSON.parse(mappingStr);
-                var stO = mapping.shuffledToOriginal; // Maps displayedIndex -> originalIndex
+                var stO = mapping.shuffledToOriginal; 
                 var answersDiv = document.getElementById('answers');
-                if (!answersDiv) return;
+                if (!answersDiv) {{
+                    console.error('Recall Anki: answers div not found.');
+                    return;
+                }}
                 
-                // Get the question text
                 var questionDiv = document.querySelector('.question');
-                var questionText = questionDiv ? questionDiv.textContent : '';
+                var questionText = questionDiv ? (questionDiv.textContent || questionDiv.innerText || '') : '';
                 
-                // Clear existing content
                 answersDiv.innerHTML = '';
 
-                // Build explanation containers in the same order as displayed on the front
                 for (var newIndex = 0; newIndex < allItems.length; newIndex++) {{
+                    if (!stO || typeof stO[newIndex] === 'undefined') {{
+                        console.error('Recall Anki: shuffledToOriginal mapping missing for index ' + newIndex);
+                        continue;
+                    }}
                     var originalIndex = stO[newIndex];
+                    if (!allItems || typeof allItems[originalIndex] === 'undefined') {{
+                        console.error('Recall Anki: allItems missing for originalIndex ' + originalIndex);
+                        continue;
+                    }}
                     var item = allItems[originalIndex];
-                    // Create container
                     var container = document.createElement('div');
                     container.className = 'explanation-container ' + 
                         (item.isCorrect ? 'correct-answer' : 'incorrect-answer');
                     container.setAttribute('data-option-index', originalIndex);
                     
+                    var explanationHtml = '';
+                    if (item.explanation_id) {{
+                        var explanationDiv = document.getElementById(item.explanation_id);
+                        if (explanationDiv) {{
+                            explanationHtml = explanationDiv.innerHTML;
+                        }} else {{
+                            console.error('Recall Anki: Hidden explanation div not found: ' + item.explanation_id);
+                        }}
+                    }} else {{
+                        console.warn('Recall Anki: item found without explanation_id for originalIndex ' + originalIndex, item);
+                    }}
+                    
+                    // Ensure item.content exists and is a string, even if decodeURIComponent failed or was empty
+                    var itemContent = (typeof item.content === 'string') ? item.content : '';
+
                     container.innerHTML = `
                         <div class="question-reference">Q: ${{htmlEscape(questionText)}}</div>
-                        <div class="option-header">${{item.content}}</div>
-                        <div class="explanation">${{item.explanation}}</div>
+                        <div class="option-header">${{itemContent}}</div>
+                        <div class="explanation">${{explanationHtml}}</div>
                     `;
                     answersDiv.appendChild(container);
                 }}
             }} catch (err) {{
-                console.error('Error building answer containers:', err);
+                console.error('Recall Anki: Error building answer containers:', err);
+                if (err.stack) {{
+                    console.error(err.stack);
+                }}
             }}
         }}
 
-        // Prism and highlightSelection logic is kept, but updated to highlight the newly added containers
         function highlightSelection() {{
             try {{
                 var selectedOptionsStr = document.body.getAttribute('data-selected-options');
@@ -297,9 +342,10 @@ def create_back_template(correct_options, incorrect_options):
                 var selectedOptions = JSON.parse(selectedOptionsStr);
                 var containers = document.querySelectorAll('.explanation-container');
                 
-                // Mark any options that were selected
                 containers.forEach(container => {{
-                    const optionIndex = parseInt(container.getAttribute('data-option-index'));
+                    const optionIndexStr = container.getAttribute('data-option-index');
+                    if (optionIndexStr === null) return; // Skip if attribute is missing
+                    const optionIndex = parseInt(optionIndexStr);
                     if (selectedOptions.includes(optionIndex)) {{
                         container.classList.add('was-selected');
                         const header = container.querySelector('.option-header');
@@ -307,16 +353,17 @@ def create_back_template(correct_options, incorrect_options):
                     }}
                 }});
 
-                // Highlight code blocks with Prism
                 document.querySelectorAll('pre code').forEach(function(block) {{
                     Prism.highlightElement(block);
                 }});
             }} catch (error) {{
-                console.error('Error in highlightSelection:', error);
+                console.error('Recall Anki: Error in highlightSelection:', error);
+                 if (error.stack) {{
+                    console.error(error.stack);
+                }}
             }}
         }}
 
-        // Build explanations and then highlight
         if (document.readyState === 'loading') {{
             document.addEventListener('DOMContentLoaded', () => {{
                 buildAnswerContainers();
