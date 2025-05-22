@@ -109,7 +109,10 @@ def convert_markdown_to_html(text):
         code_block_counter += 1
         return placeholder
     
-    code_block_pattern = r'```(.*?)\n(.*?)```'
+    # Update the regex pattern to properly handle the ``` code block pattern
+    # Old pattern was: r'```(.*?)\n(.*?)```'
+    # New pattern properly matches triple backticks and captures the content between them
+    code_block_pattern = r'```(.*?)\n([\s\S]*?)```'
     text = re.sub(code_block_pattern, extract_code_blocks, text, flags=re.DOTALL)
     
     # STEP 2: Process images (and other elements that should be processed early)
@@ -141,12 +144,29 @@ def convert_markdown_to_html(text):
     
     # STEP 3: Process inline code
     def convert_inline_code(text):
+        # Handle triple backticks (for code blocks) - should already be processed at this point
+        # but this is a safety check to prevent conflicts with inline code processing
+        triple_backtick_pattern = r'```[\s\S]*?```'
+        triple_backtick_matches = re.findall(triple_backtick_pattern, text)
+        placeholders = {}
+        
+        # Replace triple backtick blocks with placeholders to protect them
+        for i, match in enumerate(triple_backtick_matches):
+            placeholder = f"TRIPLE_BACKTICK_PLACEHOLDER_{i}"
+            placeholders[placeholder] = match
+            text = text.replace(match, placeholder)
+        
         # Handle double backticks (for inline code with literal backticks)
-        double_backtick_pattern = r'``([^`]+)``'
+        double_backtick_pattern = r'``([^`]+?)``'
         text = re.sub(double_backtick_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
         
         # Handle single backticks for inline code
+        # Improved regex to avoid matching backticks that are part of triple backticks
         text = re.sub(r'(?<!`)`(?!`)(.*?)(?<!`)`(?!`)', lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+        
+        # Restore triple backtick blocks
+        for placeholder, original in placeholders.items():
+            text = text.replace(placeholder, original)
         
         return text
     
@@ -261,21 +281,12 @@ def format_code_block(code, language=None):
     # Helper function to encode critical characters with HTML entities
     def encode_with_html_entities(text):
         """Encode text with HTML entities for critical characters"""
-        encoded = ""
-        for char in text:
-            if char == '/':
-                encoded += '&#47;'
-            elif char == '*':
-                encoded += '&#42;'
-            elif char == '<':
-                encoded += '&lt;'
-            elif char == '>':
-                encoded += '&gt;'
-            elif char == '&':
-                encoded += '&amp;'
-            else:
-                encoded += char
-        return encoded
+        return (text.replace('&', '&amp;')
+                    .replace('/', '&#47;')
+                    .replace('*', '&#42;')
+                    .replace('<', '&lt;')
+                    .replace('>', '&gt;')
+                    .replace('`', '&#96;'))
     
     # Clean up the code
     code = code.strip()
@@ -312,9 +323,7 @@ def format_code_block(code, language=None):
     for line in code.split('\n'):
         # Escape HTML special characters (except for already processed comments)
         if '<span class="token comment">' not in line:
-            line = (line.replace('&', '&amp;')
-                       .replace('<', '&lt;')
-                       .replace('>', '&gt;'))
+            line = encode_with_html_entities(line)
         
         # Special handling for JS single-line comments
         if language and language.lower() in ['javascript', 'js']:

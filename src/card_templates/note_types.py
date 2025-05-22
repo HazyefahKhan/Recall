@@ -219,8 +219,8 @@ def create_back_template(correct_options, incorrect_options):
         )
         all_items_array.append(
             # Use simple string for ID, no URL encoding needed here for explanation_id
-            # Content still needs URL decoding as it might have special chars not suitable for direct JS string.
-            f'{{ content: decodeURIComponent("{{{{url:CorrectOption{suffix}}}}}"), explanation_id: "{explanation_id}", isCorrect: true }}'
+            # Use a more robust approach for content that might have special characters
+            f'{{ content: `{{{{CorrectOption{suffix}}}}}`, explanation_id: "{explanation_id}", isCorrect: true }}'
         )
     
     # Add incorrect options
@@ -231,7 +231,8 @@ def create_back_template(correct_options, incorrect_options):
             f'<div id="{explanation_id}" style="display:none;">{{{{IncorrectExplanation{incorrect_suffix}}}}}</div>'
         )
         all_items_array.append(
-            f'{{ content: decodeURIComponent("{{{{url:IncorrectOption{incorrect_suffix}}}}}"), explanation_id: "{explanation_id}", isCorrect: false }}'
+            # Use backtick literals instead of URL encoding/decoding to preserve exact content
+            f'{{ content: `{{{{IncorrectOption{incorrect_suffix}}}}}`, explanation_id: "{explanation_id}", isCorrect: false }}'
         )
     
     all_items_str = ",\n".join(all_items_array)
@@ -266,6 +267,20 @@ def create_back_template(correct_options, incorrect_options):
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }}
+        
+        // Safe content extraction - ensures content is always treated as plain text
+        function safeExtractContent(item) {{
+            try {{
+                if (!item || typeof item.content === 'undefined') return '';
+                // Return as-is if it's already a string
+                if (typeof item.content === 'string') return item.content;
+                // Try to convert to string if it's something else
+                return String(item.content);
+            }} catch (err) {{
+                console.error('Error extracting content:', err);
+                return '';
+            }}
         }}
 
         function buildAnswerContainers() {{
@@ -316,8 +331,8 @@ def create_back_template(correct_options, incorrect_options):
                         console.warn('Recall Anki: item found without explanation_id for originalIndex ' + originalIndex, item);
                     }}
                     
-                    // Ensure item.content exists and is a string, even if decodeURIComponent failed or was empty
-                    var itemContent = (typeof item.content === 'string') ? item.content : '';
+                    // Use the safe content extraction function
+                    var itemContent = safeExtractContent(item);
 
                     container.innerHTML = `
                         <div class="question-reference">Q: ${{htmlEscape(questionText)}}</div>

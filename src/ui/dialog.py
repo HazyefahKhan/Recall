@@ -107,7 +107,7 @@ ___""")
         sections = {}
         
         # Extract question
-        question_match = re.search(r'#### Question\s*\n(.*?)(?=\n(?:___|---)|\Z)', text, re.DOTALL)
+        question_match = re.search(r'#### Question\s*\n([\s\S]*?)(?=\n(?:___|---)|\Z)', text, re.DOTALL)
         if question_match:
             sections['question'] = question_match.group(1).strip()
             
@@ -131,15 +131,28 @@ ___""")
         # Initialize correct options list
         sections['correct_options'] = []
         
-        # First, extract all complete option sections (between section markers)
-        section_markers = [m.start() for m in re.finditer(r'\n---\n', text)]
-        section_markers = [-1] + section_markers + [len(text)]
+        # Split text by section markers (both --- and ___ are supported)
+        section_markers = re.finditer(r'\n(?:---|\n___)\n', text)
+        marker_positions = [m.start() for m in section_markers]
+        
+        # Add beginning and end positions to create complete sections
+        marker_positions = [-1] + marker_positions + [len(text)]
         
         option_sections = []
-        for i in range(len(section_markers) - 1):
-            start = section_markers[i] + 5 if i > 0 else 0  # Skip the --- marker except for first section
-            end = section_markers[i+1]
+        for i in range(len(marker_positions) - 1):
+            start = marker_positions[i]
+            end = marker_positions[i+1]
+            
+            # Skip the marker itself (5 chars for "\n---\n" or "\n___\n")
+            if start >= 0:
+                start += 5
+            else:
+                # For the first section, start from the beginning
+                start = 0
+                
             section = text[start:end].strip()
+            
+            # Only include sections that have option headers
             if section and ('#### Correct Option' in section or '#### Incorrect Option' in section):
                 option_sections.append(section)
         
@@ -150,12 +163,12 @@ ___""")
             
             # Extract option text, explanation, and preview
             option_match = re.search(
-                r'#### (Correct|Incorrect) Option\s*\n(.*?)(?=\n##### Explanation)',
+                r'#### (Correct|Incorrect) Option\s*\n([\s\S]*?)(?=\n##### Explanation|\Z)',
                 section, re.DOTALL
             )
             
             explanation_match = re.search(
-                r'##### Explanation\s*\n(.*?)(?=\n#### Preview|\Z)',
+                r'##### Explanation\s*\n([\s\S]*?)(?=\n#### Preview|\Z)',
                 section, re.DOTALL
             )
             
@@ -183,7 +196,7 @@ ___""")
                 option_data = {
                     'option': option_text,
                     'explanation': explanation_text,
-                    'preview_data': option_preview_data # Changed from preview_code/preview_html
+                    'preview_data': option_preview_data
                 }
                 
                 if is_correct:
