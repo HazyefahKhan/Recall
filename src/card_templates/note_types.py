@@ -553,10 +553,13 @@ def get_card_styling():
         background-color: #21252b;
         padding: 15px;
         border-radius: 8px;
-        overflow-x: auto;
+        overflow-x: visible;
         margin: 15px 0;
         border: 1px solid rgba(62, 68, 81, 0.5);
         box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
     }
 
     code {
@@ -579,7 +582,7 @@ def get_card_styling():
         border-radius: 8px;
         margin: 15px 0;
         padding: 15px;
-        overflow-x: auto;
+        overflow-x: visible;
         border: 1px solid rgba(62, 68, 81, 0.5);
         box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
     }

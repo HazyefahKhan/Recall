@@ -345,12 +345,18 @@ def format_code_block(code, language=None):
     
     code = '<br>'.join(lines)
     
-    # Add CSS to ensure comments are properly styled
+    # Add CSS to ensure comments are properly styled and code wraps properly on mobile
     css_for_comments = """
     <style>
     .token.comment {
         color: #5c6370 !important;
         font-style: normal !important;
+    }
+    .code-block pre {
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        overflow-x: visible !important;
     }
     </style>
     """
