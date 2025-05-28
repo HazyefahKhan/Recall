@@ -223,13 +223,63 @@ def convert_markdown_to_html(text):
                       text, 
                       flags=re.MULTILINE)
     
-    # Convert bullet points and numbered lists
-    text = re.sub(r'^\*\s+(.*?)$', r'<ul><li>\1</li></ul>', text, flags=re.MULTILINE)
-    text = re.sub(r'^\d+\.\s+(.*?)$', r'<ol><li>\1</li></ol>', text, flags=re.MULTILINE)
+    # Convert lists - improved handling for consecutive items
+    # First, handle unordered lists
+    lines = text.split('\n')
+    result_lines = []
+    in_ul = False
+    in_ol = False
     
-    # Fix multiple consecutive list items (collapse adjacent ul/ol tags)
-    text = re.sub(r'</ul>\s*<ul>', '', text)
-    text = re.sub(r'</ol>\s*<ol>', '', text)
+    for line in lines:
+        # Check if this line is an unordered list item (support both * and -)
+        ul_match = re.match(r'^[\*\-]\s+(.*)$', line)
+        # Check if this line is an ordered list item
+        ol_match = re.match(r'^\d+\.\s+(.*)$', line)
+        
+        if ul_match:
+            # This is an unordered list item
+            if not in_ul:
+                # Start a new list
+                result_lines.append('<ul>')
+                in_ul = True
+            # Close any open ordered list
+            if in_ol:
+                result_lines.append('</ol>')
+                in_ol = False
+            # Add the list item
+            result_lines.append(f'<li>{ul_match.group(1)}</li>')
+        elif ol_match:
+            # This is an ordered list item
+            if not in_ol:
+                # Start a new list
+                result_lines.append('<ol>')
+                in_ol = True
+            # Close any open unordered list
+            if in_ul:
+                result_lines.append('</ul>')
+                in_ul = False
+            # Add the list item
+            result_lines.append(f'<li>{ol_match.group(1)}</li>')
+        else:
+            # This is not a list item
+            # Close any open lists
+            if in_ul:
+                result_lines.append('</ul>')
+                in_ul = False
+            if in_ol:
+                result_lines.append('</ol>')
+                in_ol = False
+            # Add the regular line
+            result_lines.append(line)
+    
+    # Close any remaining open lists at the end
+    if in_ul:
+        result_lines.append('</ul>')
+    if in_ol:
+        result_lines.append('</ol>')
+    
+    # Join the lines back together
+    text = '\n'.join(result_lines)
     
     # Convert emphasis and strong emphasis
     text = re.sub(r'(?<!\*)\*(?!\*)([^\*\n]+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)

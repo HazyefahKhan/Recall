@@ -218,3 +218,35 @@ class TestMarkdownConverter:
         # Make sure comments are properly styled
         assert '<span class="token comment">/* 50 % of the viewport */</span>' in html
         assert '<span class="token comment">/* no width declared here */</span>' in html 
+
+    def test_list_formatting_with_inline_elements(self):
+        """Test that lists with inline code and formatting are properly rendered"""
+        from src.markdown.converter import convert_markdown_to_html
+        
+        # Test the exact example from the user that was causing issues
+        markdown = """The grid-template-columns property in CSS Grid Layout is used to define the size and number of columns that will structure the grid. The repeat() function is a helpful tool within this property to simplify the definition of multiple columns (or rows) that share the same characteristics.
+
+When you see repeat(3, 1fr):
+
+- The number `3` is the first argument to `repeat()`, and it signifies that the track definition that follows should be created three times.
+- `1fr` is the second argument, representing the track definition itself. The `fr` unit stands for **"fractional unit"**. It tells the browser to divide the available space within the grid container (after accounting for any fixed-size tracks or gaps) into a certain number of shares. In this case, `1fr` means each of the three columns will receive one equal share of that available space. For example, if there's 600px of available width in the container, each of the three `1fr` columns would become 200px wide."""
+        
+        html = convert_markdown_to_html(markdown)
+        
+        # Check that we have a proper list structure
+        assert '<ul>' in html, "Should have opening <ul> tag"
+        assert '</ul>' in html, "Should have closing </ul> tag"
+        assert html.count('<ul>') == 1, "Should have exactly one <ul> tag"
+        assert html.count('</ul>') == 1, "Should have exactly one </ul> tag"
+        assert html.count('<li>') == 2, "Should have exactly 2 list items"
+        
+        # Check that inline code is preserved within list items
+        assert '<li>The number <code>3</code>' in html
+        assert '<li><code>1fr</code> is the second argument' in html
+        
+        # Check that bold formatting is preserved
+        assert '<strong>"fractional unit"</strong>' in html
+        
+        # Ensure the list items contain the full content
+        assert 'track definition that follows should be created three times' in html
+        assert 'each of the three columns will receive one equal share' in html 
