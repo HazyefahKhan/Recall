@@ -78,24 +78,50 @@ def create_front_template(correct_options, incorrect_options):
     Returns:
         str: The front template HTML/JS
     """
-    # Generate the options array based on the number of correct and incorrect options
-    options_array = ""
+    # Generate hidden divs for option content
+    hidden_content_divs = []
+    
+    # Add correct options
     for i in range(correct_options):
         suffix = str(i + 1) if correct_options > 1 else ""
-        options_array += f"{{ content: `{{{{CorrectOption{suffix}}}}}`, isCorrect: true }}"
-        if i < correct_options - 1 or incorrect_options > 0:
-            options_array += ",\n"
-            
-    if incorrect_options > 0:
-        for i in range(incorrect_options):
-            options_array += f"{{ content: `{{{{IncorrectOption{i + 1}}}}}`, isCorrect: false }}"
-            if i < incorrect_options - 1:
-                options_array += ",\n"
+        div_id = f"recall_option_content_correct_{i}"
+        hidden_content_divs.append(
+            f'<div id="{div_id}" style="display:none;">{{{{CorrectOption{suffix}}}}}</div>'
+        )
     
+    # Add incorrect options
+    for i in range(incorrect_options):
+        div_id = f"recall_option_content_incorrect_{i}"
+        hidden_content_divs.append(
+            f'<div id="{div_id}" style="display:none;">{{{{IncorrectOption{i + 1}}}}}</div>'
+        )
+    
+    hidden_content_html = "\n".join(hidden_content_divs)
+    
+    # Generate the options array structure
+    options_array_items = []
+    
+    for i in range(correct_options):
+        options_array_items.append(
+            f'{{ contentId: "recall_option_content_correct_{i}", isCorrect: true }}'
+        )
+    
+    for i in range(incorrect_options):
+        options_array_items.append(
+            f'{{ contentId: "recall_option_content_incorrect_{i}", isCorrect: false }}'
+        )
+    
+    options_array = ",\n                    ".join(options_array_items)
     shuffled_indices = ", ".join(map(str, range(correct_options + incorrect_options)))
     
     return f"""
     <div class="question">{{{{Question}}}}</div>
+    
+    <!-- Hidden divs containing option content -->
+    <div id="recall_hidden_option_content" style="display:none;">
+        {hidden_content_html}
+    </div>
+    
     <div id="options" class="options"></div>
     <button onclick="submitAnswer()" id="submit-btn" class="submit-button">Submit</button>
 
@@ -121,9 +147,19 @@ def create_front_template(correct_options, incorrect_options):
                 </div>
             `;
         }}
+        
+        function getOptionContent(contentId) {{
+            const contentDiv = document.getElementById(contentId);
+            if (contentDiv) {{
+                return contentDiv.innerHTML;
+            }}
+            console.error('Content div not found:', contentId);
+            return '';
+        }}
 
         function initializeOptions() {{
             try {{
+                // Define options with references to content divs
                 const options = [
                     {options_array}
                 ];
@@ -143,8 +179,11 @@ def create_front_template(correct_options, incorrect_options):
                     originalToShuffled[originalIndex] = newIndex;
                     shuffledToOriginal[newIndex] = originalIndex;
                     const option = options[originalIndex];
-                    if (option && option.content) {{
-                        optionsContainer.innerHTML += createOption(newIndex, option.content);
+                    if (option && option.contentId) {{
+                        const content = getOptionContent(option.contentId);
+                        if (content) {{
+                            optionsContainer.innerHTML += createOption(newIndex, content);
+                        }}
                     }}
                 }});
 
@@ -154,6 +193,10 @@ def create_front_template(correct_options, incorrect_options):
                 }}));
             }} catch (error) {{
                 console.error('Error initializing options:', error);
+                console.error('Error details:', error.message);
+                if (error.stack) {{
+                    console.error('Stack trace:', error.stack);
+                }}
             }}
         }}
 
@@ -205,38 +248,47 @@ def create_back_template(correct_options, incorrect_options):
     Returns:
         str: The back template HTML/JS
     """
-    # Generate all items array based on the number of correct and incorrect options
+    # Generate all hidden divs for both content and explanations
     hidden_data_divs_list = []
     all_items_array = []
     
     # Add correct options
     for i in range(correct_options):
         suffix = str(i + 1) if correct_options > 1 else ""
-        explanation_id = f"recall_explanation_correct_{suffix}" # Unique ID
-        # Store the raw field reference for the hidden div
+        content_id = f"recall_back_content_correct_{i}"
+        explanation_id = f"recall_explanation_correct_{suffix}"
+        
+        # Hidden divs for content and explanation
+        hidden_data_divs_list.append(
+            f'<div id="{content_id}" style="display:none;">{{{{CorrectOption{suffix}}}}}</div>'
+        )
         hidden_data_divs_list.append(
             f'<div id="{explanation_id}" style="display:none;">{{{{CorrectExplanation{suffix}}}}}</div>'
         )
+        
         all_items_array.append(
-            # Use simple string for ID, no URL encoding needed here for explanation_id
-            # Use a more robust approach for content that might have special characters
-            f'{{ content: `{{{{CorrectOption{suffix}}}}}`, explanation_id: "{explanation_id}", isCorrect: true }}'
+            f'{{ contentId: "{content_id}", explanationId: "{explanation_id}", isCorrect: true }}'
         )
     
     # Add incorrect options
     for i in range(incorrect_options):
-        incorrect_suffix = str(i + 1) # Incorrect options always have a suffix
-        explanation_id = f"recall_explanation_incorrect_{incorrect_suffix}" # Unique ID
+        incorrect_suffix = str(i + 1)
+        content_id = f"recall_back_content_incorrect_{i}"
+        explanation_id = f"recall_explanation_incorrect_{incorrect_suffix}"
+        
+        hidden_data_divs_list.append(
+            f'<div id="{content_id}" style="display:none;">{{{{IncorrectOption{incorrect_suffix}}}}}</div>'
+        )
         hidden_data_divs_list.append(
             f'<div id="{explanation_id}" style="display:none;">{{{{IncorrectExplanation{incorrect_suffix}}}}}</div>'
         )
+        
         all_items_array.append(
-            # Use backtick literals instead of URL encoding/decoding to preserve exact content
-            f'{{ content: `{{{{IncorrectOption{incorrect_suffix}}}}}`, explanation_id: "{explanation_id}", isCorrect: false }}'
+            f'{{ contentId: "{content_id}", explanationId: "{explanation_id}", isCorrect: false }}'
         )
     
-    all_items_str = ",\n".join(all_items_array)
-    hidden_data_divs_html = "\n".join(hidden_data_divs_list)
+    all_items_str = ",\n            ".join(all_items_array)
+    hidden_data_divs_html = "\n        ".join(hidden_data_divs_list)
     
     return f"""
     {{{{FrontSide}}}}
@@ -253,7 +305,7 @@ def create_back_template(correct_options, incorrect_options):
     <div class="answer" id="answers"></div>
 
     <script>
-        // Build an array of all items in the same order they were added on the front side:
+        // Build an array of all items in the same order they were added on the front side
         var allItems = [
             {all_items_str}
         ];
@@ -269,18 +321,14 @@ def create_back_template(correct_options, incorrect_options):
                 .replace(/'/g, '&#39;');
         }}
         
-        // Safe content extraction - ensures content is always treated as plain text
-        function safeExtractContent(item) {{
-            try {{
-                if (!item || typeof item.content === 'undefined') return '';
-                // Return as-is if it's already a string
-                if (typeof item.content === 'string') return item.content;
-                // Try to convert to string if it's something else
-                return String(item.content);
-            }} catch (err) {{
-                console.error('Error extracting content:', err);
-                return '';
+        // Safe content extraction from hidden divs
+        function getContentFromDiv(divId) {{
+            const div = document.getElementById(divId);
+            if (div) {{
+                return div.innerHTML;
             }}
+            console.error('Div not found:', divId);
+            return '';
         }}
 
         function buildAnswerContainers() {{
@@ -319,20 +367,21 @@ def create_back_template(correct_options, incorrect_options):
                         (item.isCorrect ? 'correct-answer' : 'incorrect-answer');
                     container.setAttribute('data-option-index', originalIndex);
                     
+                    // Get content and explanation from hidden divs
+                    var itemContent = '';
                     var explanationHtml = '';
-                    if (item.explanation_id) {{
-                        var explanationDiv = document.getElementById(item.explanation_id);
-                        if (explanationDiv) {{
-                            explanationHtml = explanationDiv.innerHTML;
-                        }} else {{
-                            console.error('Recall Anki: Hidden explanation div not found: ' + item.explanation_id);
-                        }}
+                    
+                    if (item.contentId) {{
+                        itemContent = getContentFromDiv(item.contentId);
                     }} else {{
-                        console.warn('Recall Anki: item found without explanation_id for originalIndex ' + originalIndex, item);
+                        console.error('Recall Anki: item missing contentId for originalIndex ' + originalIndex);
                     }}
                     
-                    // Use the safe content extraction function
-                    var itemContent = safeExtractContent(item);
+                    if (item.explanationId) {{
+                        explanationHtml = getContentFromDiv(item.explanationId);
+                    }} else {{
+                        console.error('Recall Anki: item missing explanationId for originalIndex ' + originalIndex);
+                    }}
 
                     container.innerHTML = `
                         <div class="question-reference">Q: ${{htmlEscape(questionText)}}</div>
@@ -343,6 +392,7 @@ def create_back_template(correct_options, incorrect_options):
                 }}
             }} catch (err) {{
                 console.error('Recall Anki: Error building answer containers:', err);
+                console.error('Error details:', err.message);
                 if (err.stack) {{
                     console.error(err.stack);
                 }}
@@ -373,7 +423,7 @@ def create_back_template(correct_options, incorrect_options):
                 }});
             }} catch (error) {{
                 console.error('Recall Anki: Error in highlightSelection:', error);
-                 if (error.stack) {{
+                if (error.stack) {{
                     console.error(error.stack);
                 }}
             }}

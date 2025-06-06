@@ -103,95 +103,135 @@ ___""")
         # First, clean up any variations of the Explanation header
         text = re.sub(r'##### Explanation.*?\n', '##### Explanation\n', text)
         
-        # Parse sections using regex
+        # STEP 1: Protect code blocks from interfering with section parsing
+        # Store code blocks with placeholders to prevent regex confusion
+        code_blocks = {}
+        code_block_counter = 0
+        
+        def extract_code_blocks(match):
+            nonlocal code_block_counter
+            placeholder = f"__CODE_BLOCK_PLACEHOLDER_{code_block_counter}__"
+            code_blocks[placeholder] = match.group(0)
+            code_block_counter += 1
+            return placeholder
+        
+        # Extract all code blocks (including those with nested backticks)
+        # This pattern handles multi-line code blocks with any language specifier
+        # Flexible pattern: optional whitespace after ```, optional language, flexible content
+        code_block_pattern = r'```\s*(\w*)\s*([\s\S]*?)```'
+        text_with_placeholders = re.sub(code_block_pattern, extract_code_blocks, text)
+        
+        # STEP 2: Extract main sections using the protected text
         sections = {}
         
-        # Extract question
-        question_match = re.search(r'#### Question\s*\n([\s\S]*?)(?=\n(?:___|---)|\Z)', text, re.DOTALL)
+        # Extract question section - now using protected text
+        question_match = re.search(r'#### Question\s*\n([\s\S]*?)(?=\n(?:___|---)|\Z)', text_with_placeholders, re.DOTALL)
         if question_match:
-            sections['question'] = question_match.group(1).strip()
+            question_content = question_match.group(1).strip()
             
-            # Check for preview section in question
-            # Regex to capture language type and code block
-            preview_regex = r'#### Preview\s*\n```(\w*)\s*([\s\S]*?)\s*```'
-            preview_match = re.search(preview_regex, question_match.group(1), re.DOTALL)
+            # Restore code blocks in question content
+            for placeholder, original in code_blocks.items():
+                question_content = question_content.replace(placeholder, original)
+            
+            sections['question'] = question_content
+            
+            # Check for preview section in question using the original content
+            # Updated regex to handle edge cases better with flexible code block pattern
+            preview_regex = r'#### Preview\s*\n(```\s*\w*\s*[\s\S]*?```)'
+            preview_match = re.search(preview_regex, question_content, re.DOTALL)
             
             if preview_match:
-                language = preview_match.group(1).lower().strip() if preview_match.group(1) else 'html' # Default to html if no lang specified
-                code_content = preview_match.group(2).strip()
-                
-                sections['question_preview'] = {
-                    'language': language,
-                    'code': code_content
-                }
-                # For HTML/CSS/JS, we also want to specify the content for iframe rendering
-                if language in ['html', 'css', 'javascript', 'js']:
-                    sections['question_preview']['html_to_render'] = code_content
+                full_code_block = preview_match.group(1)
+                # Extract language and content from the code block with flexible pattern
+                code_block_match = re.match(r'```\s*(\w*)\s*([\s\S]*?)```', full_code_block, re.DOTALL)
+                if code_block_match:
+                    language = code_block_match.group(1).lower().strip() if code_block_match.group(1) else 'html'
+                    code_content = code_block_match.group(2).rstrip()  # Remove trailing whitespace but preserve internal structure
+                    
+                    sections['question_preview'] = {
+                        'language': language,
+                        'code': code_content
+                    }
+                    # For HTML/CSS/JS, we also want to specify the content for iframe rendering
+                    if language in ['html', 'css', 'javascript', 'js']:
+                        sections['question_preview']['html_to_render'] = code_content
         
-        # Initialize correct options list
+        # Initialize option lists
         sections['correct_options'] = []
+        sections['incorrect_options'] = []
         
-        # Split text by section markers (both --- and ___ are supported)
-        section_markers = re.finditer(r'\n(?:---|\n___)\n', text)
+        # STEP 3: Split by section markers using protected text
+        # Find all section markers
+        section_markers = list(re.finditer(r'\n(?:---|___)\n', text_with_placeholders))
         marker_positions = [m.start() for m in section_markers]
         
-        # Add beginning and end positions to create complete sections
-        marker_positions = [-1] + marker_positions + [len(text)]
+        # Add beginning and end positions
+        marker_positions = [-1] + marker_positions + [len(text_with_placeholders)]
         
+        # Extract sections between markers
         option_sections = []
         for i in range(len(marker_positions) - 1):
             start = marker_positions[i]
             end = marker_positions[i+1]
             
-            # Skip the marker itself (5 chars for "\n---\n" or "\n___\n")
+            # Skip the marker itself
             if start >= 0:
-                start += 5
+                start = marker_positions[i] + len(section_markers[i-1].group(0)) if i > 0 else start + 5
             else:
-                # For the first section, start from the beginning
                 start = 0
                 
-            section = text[start:end].strip()
+            section = text_with_placeholders[start:end].strip()
             
             # Only include sections that have option headers
             if section and ('#### Correct Option' in section or '#### Incorrect Option' in section):
+                # Restore code blocks in this section
+                for placeholder, original in code_blocks.items():
+                    section = section.replace(placeholder, original)
                 option_sections.append(section)
         
-        # Now parse each option section
+        # STEP 4: Parse each option section
         for section in option_sections:
             # Determine if this is a correct or incorrect option
             is_correct = '#### Correct Option' in section
             
-            # Extract option text, explanation, and preview
+            # Extract option text - be more careful about where explanation starts
             option_match = re.search(
-                r'#### (Correct|Incorrect) Option\s*\n([\s\S]*?)(?=\n##### Explanation|\Z)',
+                r'#### (?:Correct|Incorrect) Option\s*\n([\s\S]*?)(?=\n##### Explanation|\Z)',
                 section, re.DOTALL
             )
             
+            # Extract explanation text - be more careful about where preview starts
             explanation_match = re.search(
                 r'##### Explanation\s*\n([\s\S]*?)(?=\n#### Preview|\Z)',
                 section, re.DOTALL
             )
             
+            # Extract preview if it exists - handle edge cases better
             preview_match = re.search(
-                r'#### Preview\s*\n```(\w*)\s*([\s\S]*?)\s*```',
+                r'#### Preview\s*\n(```\s*\w*\s*[\s\S]*?```)',
                 section, re.DOTALL
             )
             
             if option_match and explanation_match:
-                option_text = option_match.group(2).strip()
+                option_text = option_match.group(1).strip()
                 explanation_text = explanation_match.group(1).strip()
                 
                 option_preview_data = None
                 if preview_match:
-                    language = preview_match.group(1).lower().strip() if preview_match.group(1) else 'html' # Default to html
-                    code_content = preview_match.group(2).strip()
-                    option_preview_data = {
-                        'language': language,
-                        'code': code_content
-                    }
-                    # For HTML/CSS/JS, specify content for iframe rendering
-                    if language in ['html', 'css', 'javascript', 'js']:
-                        option_preview_data['html_to_render'] = code_content
+                    full_code_block = preview_match.group(1)
+                    # Extract language and content from the code block with flexible pattern
+                    code_block_match = re.match(r'```\s*(\w*)\s*([\s\S]*?)```', full_code_block, re.DOTALL)
+                    if code_block_match:
+                        language = code_block_match.group(1).lower().strip() if code_block_match.group(1) else 'html'
+                        code_content = code_block_match.group(2).rstrip()  # Remove trailing whitespace
+                        
+                        option_preview_data = {
+                            'language': language,
+                            'code': code_content
+                        }
+                        # For HTML/CSS/JS, specify content for iframe rendering
+                        if language in ['html', 'css', 'javascript', 'js']:
+                            option_preview_data['html_to_render'] = code_content
                 
                 option_data = {
                     'option': option_text,
@@ -202,13 +242,14 @@ ___""")
                 if is_correct:
                     sections['correct_options'].append(option_data)
                 else:
-                    if 'incorrect_options' not in sections:
-                        sections['incorrect_options'] = []
                     sections['incorrect_options'].append(option_data)
         
-        # Make sure incorrect_options exists even if empty
-        if 'incorrect_options' not in sections:
-            sections['incorrect_options'] = []
+        # Validate that we have at least some content
+        if not sections.get('question'):
+            raise ValueError("No question section found. Please ensure your input starts with '#### Question'")
+        
+        if not sections['correct_options'] and not sections['incorrect_options']:
+            raise ValueError("No option sections found. Please ensure you have at least one '#### Correct Option' or '#### Incorrect Option' section")
             
         return sections
 

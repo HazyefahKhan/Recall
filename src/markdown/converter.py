@@ -41,21 +41,23 @@ def convert_markdown_to_html(text):
         html_code_block = match.group(2)
         
         # Check if we have a code block with html tag
-        code_match = re.match(r'```html\s*([\s\S]*?)\s*```', html_code_block, re.DOTALL)
+        # Updated pattern to handle optional whitespace and newlines
+        code_match = re.match(r'```\s*(\w*)\s*([\s\S]*?)\s*```', html_code_block, re.DOTALL)
         if code_match:
             # Extract the raw HTML content without the code block markers
-            html_content = code_match.group(1).strip()
+            language = code_match.group(1).lower() if code_match.group(1) else 'html'
+            html_content = code_match.group(2).strip()
             placeholder = f"PREVIEW_SECTION_PLACEHOLDER_{preview_counter}"
             
             # Store both the formatted code block (for display) and the raw HTML (for rendering)
             preview_sections[placeholder] = {
-                'code': format_code_block(html_content, 'html'),
-                'html': html_content
+                'code': format_code_block(html_content, language),
+                'html': html_content if language == 'html' else None
             }
             preview_counter += 1
             return placeholder
         
-        # If no code block with html tag is found, just keep the original text
+        # If no code block with proper format is found, just keep the original text
         return match.group(0)
     
     # Match "#### Preview" followed by a code block
@@ -102,17 +104,19 @@ def convert_markdown_to_html(text):
     
     def extract_code_blocks(match):
         nonlocal code_block_counter
-        language = match.group(1).strip() or 'text'
+        language = match.group(1).strip() if match.group(1) else 'text'
         code = match.group(2)
         placeholder = f"CODE_BLOCK_PLACEHOLDER_{code_block_counter}"
         code_blocks[placeholder] = format_code_block(code, language)
         code_block_counter += 1
         return placeholder
     
-    # Update the regex pattern to properly handle the ``` code block pattern
-    # Old pattern was: r'```(.*?)\n(.*?)```'
-    # New pattern properly matches triple backticks and captures the content between them
-    code_block_pattern = r'```(.*?)\n([\s\S]*?)```'
+    # Update the regex pattern to handle code blocks more flexibly
+    # This pattern now handles:
+    # - Optional whitespace after opening ```
+    # - Optional language specifier
+    # - Content that may or may not start with a newline
+    code_block_pattern = r'```\s*(\w*)\s*([\s\S]*?)```'
     text = re.sub(code_block_pattern, extract_code_blocks, text, flags=re.DOTALL)
     
     # STEP 2: Process images (and other elements that should be processed early)
@@ -142,7 +146,7 @@ def convert_markdown_to_html(text):
     
     text = convert_images(text)
     
-    # STEP 3: Process inline code
+    # STEP 3: Process inline code with better handling of edge cases
     def convert_inline_code(text):
         # Handle triple backticks (for code blocks) - should already be processed at this point
         # but this is a safety check to prevent conflicts with inline code processing
@@ -156,13 +160,16 @@ def convert_markdown_to_html(text):
             placeholders[placeholder] = match
             text = text.replace(match, placeholder)
         
-        # Handle double backticks (for inline code with literal backticks)
+        # Handle double backticks first (for inline code containing single backticks)
+        # Pattern: `` ... `` where ... can contain single backticks
         double_backtick_pattern = r'``([^`]+?)``'
         text = re.sub(double_backtick_pattern, lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
         
         # Handle single backticks for inline code
-        # Improved regex to avoid matching backticks that are part of triple backticks
-        text = re.sub(r'(?<!`)`(?!`)(.*?)(?<!`)`(?!`)', lambda m: f'<code>{html_escape(m.group(1))}</code>', text)
+        # Updated pattern to be more precise and avoid edge cases
+        # This matches single backticks that are not part of double/triple backticks
+        single_backtick_pattern = r'(?<!`)(`(?!`))((?:[^`]|(?<=\\)`)+?)(?<!`)(`(?!`))'
+        text = re.sub(single_backtick_pattern, lambda m: f'<code>{html_escape(m.group(2))}</code>', text)
         
         # Restore triple backtick blocks
         for placeholder, original in placeholders.items():
