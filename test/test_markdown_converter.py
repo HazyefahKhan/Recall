@@ -212,12 +212,21 @@ class TestMarkdownConverter:
         
         html = convert_markdown_to_html(markdown)
         
-        # Check that CSS comments are preserved correctly
+        # Check that CSS comments are preserved correctly (without special span wrapping)
         assert "/* 50 % of the viewport */" in html
         assert "/* no width declared here */" in html
-        # Make sure comments are properly styled
-        assert '<span class="token comment">/* 50 % of the viewport */</span>' in html
-        assert '<span class="token comment">/* no width declared here */</span>' in html 
+        
+        # Check that the code block has the proper Prism.js structure
+        assert '<pre><code class="language-html">' in html
+        assert '</code></pre>' in html
+        assert 'class="code-block"' in html
+        
+        # Ensure HTML entities are properly escaped
+        assert '&lt;!DOCTYPE html&gt;' in html
+        assert '&lt;html lang="en"&gt;' in html
+        
+        # Comments should NOT be wrapped in spans (Prism.js will handle this)
+        assert '<span class="token comment">' not in html
 
     def test_list_formatting_with_inline_elements(self):
         """Test that lists with inline code and formatting are properly rendered"""

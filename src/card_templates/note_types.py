@@ -294,8 +294,19 @@ def create_back_template(correct_options, incorrect_options):
     {{{{FrontSide}}}}
     <hr id="answer">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js" data-manual></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-markup.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-bash.min.js"></script>
     
     <div id="recall_hidden_explanation_data" style="display:none;">
         {hidden_data_divs_html}
@@ -420,6 +431,27 @@ def create_back_template(correct_options, incorrect_options):
 
                 document.querySelectorAll('pre code').forEach(function(block) {{
                     Prism.highlightElement(block);
+                }});
+                
+                // Enhanced syntax highlighting for JavaScript
+                document.querySelectorAll('.language-javascript, .language-js').forEach(function(codeBlock) {{
+                    // Fix common patterns that Prism might miss
+                    var html = codeBlock.innerHTML;
+                    
+                    // Highlight standalone 'document', 'window', 'console' objects
+                    html = html.replace(/\b(document|window|console|process|global|module|exports|require)\b(?!<\/span>)(?![^<]*>)/g, 
+                        '<span class="token dom variable">$1</span>');
+                    
+                    // Highlight const/let/var variable declarations
+                    html = html.replace(/(<span class="token keyword">(?:const|let|var)<\/span>\s+)([a-zA-Z_$][a-zA-Z0-9_$]*)(?![^<]*>)/g, 
+                        '$1<span class="token variable">$2</span>');
+                    
+                    // Highlight properties after dots (but not methods)
+                    html = html.replace(/(\.)([a-zA-Z_$][a-zA-Z0-9_$]*)(?=\s*[^(])/g, 
+                        '$1<span class="token property">$2</span>');
+                    
+                    // Update the code block
+                    codeBlock.innerHTML = html;
                 }});
             }} catch (error) {{
                 console.error('Recall Anki: Error in highlightSelection:', error);
@@ -615,22 +647,23 @@ def get_card_styling():
 
     /* Code styling */
     pre {
-        background-color: #21252b;
+        background-color: #282C34;
         padding: 15px;
         border-radius: 8px;
-        overflow-x: visible;
+        overflow-x: auto;
         margin: 15px 0;
         border: 1px solid rgba(62, 68, 81, 0.5);
         box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
+        white-space: pre;
+        word-wrap: normal;
+        overflow-wrap: normal;
     }
 
     code {
-        font-family: 'Consolas', 'Monaco', monospace;
+        font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
         font-size: 14px;
-        color: #abb2bf;
+        color: #ABB2BF;
+        background-color: transparent;
     }
 
     /* Inline code */
@@ -639,6 +672,7 @@ def get_card_styling():
         padding: 2px 5px;
         border-radius: 3px;
         border: 1px solid rgba(62, 68, 81, 0.5);
+        font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
     }
 
     /* Code block specific styling */
@@ -646,69 +680,569 @@ def get_card_styling():
         background-color: #21252b;
         border-radius: 8px;
         margin: 15px 0;
+        overflow-x: auto;
+        padding: 1px;
+    }
+    
+    .code-block pre {
+        background-color: #282C34;
+        border: none;
+        box-shadow: none;
+        margin: 0;
         padding: 15px;
-        overflow-x: visible;
-        border: 1px solid rgba(62, 68, 81, 0.5);
-        box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.2);
+        border-radius: 7px;
+    }
+    
+    .code-block pre code {
+        background-color: transparent;
+        padding: 0;
+        border: none;
     }
 
-    /* Syntax highlighting colors - One Dark Pro */
+    /* One Dark Pro Syntax Highlighting - Exact VS Code Colors */
+    
+    /* CRITICAL: JavaScript variable and property fixes */
+    
+    /* Force proper tokenization for common patterns */
+    .language-javascript .token.constant,
+    .language-js .token.constant,
+    .language-javascript .token.variable,
+    .language-js .token.variable {
+        color: #E5C07B !important;
+    }
+    
+    /* Special handling for 'document', 'window', 'console' etc. */
+    .language-javascript .token.dom,
+    .language-js .token.dom,
+    .language-javascript .token.console,
+    .language-js .token.console {
+        color: #E5C07B !important;
+    }
+    
+    /* Properties after dot notation */
+    .language-javascript .token.property,
+    .language-js .token.property,
+    .language-javascript .token.method .token.property,
+    .language-js .token.method .token.property {
+        color: #E06C75 !important;
+    }
+    
+    /* Variables and built-in objects */
+    .language-javascript .token.variable,
+    .language-js .token.variable,
+    .language-javascript .token.dom.variable,
+    .language-js .token.dom.variable {
+        color: #E5C07B !important;
+    }
+    
+    /* Override for specific common objects */
+    .language-javascript .token.keyword + .token,
+    .language-js .token.keyword + .token {
+        /* Variables after const/let/var */
+        color: #E5C07B !important;
+    }
+    
+    /* Comments */
     .token.comment,
     .token.prolog,
-    .token.doctype,
     .token.cdata {
-        color: #5c6370;
+        color: #5C6370;
+        font-style: italic;
     }
 
+    /* Punctuation and plain text */
     .token.punctuation {
-        color: #abb2bf;
+        color: #ABB2BF;
     }
-
+    
+    /* HTML/XML Tags */
+    .token.tag,
     .token.selector,
-    .token.tag {
-        color: #e06c75;
+    .token.doctype .token.name,
+    .token.doctype-tag {
+        color: #E06C75;
     }
-
-    .token.property,
-    .token.boolean,
-    .token.number,
-    .token.constant,
-    .token.symbol,
+    
+    /* HTML Attributes */
     .token.attr-name,
-    .token.deleted {
-        color: #d19a66;
+    .token.attribute {
+        color: #D19A66;
     }
-
+    
+    /* Strings and attribute values */
     .token.string,
-    .token.char,
     .token.attr-value,
-    .token.builtin,
-    .token.inserted {
-        color: #98c379;
+    .token.char {
+        color: #98C379;
     }
-
+    
+    /* JavaScript/CSS Keywords (let, const, var, function, etc) */
+    .token.keyword,
+    .token.control,
+    .token.directive,
+    .token.storage {
+        color: #C678DD;
+    }
+    
+    /* Operators (=, +, -, etc) */
     .token.operator,
     .token.entity,
     .token.url,
-    .language-css .token.string,
-    .style .token.string {
-        color: #56b6c2;
+    .token.variable.interpolation {
+        color: #56B6C2;
     }
-
-    .token.atrule,
-    .token.keyword {
-        color: #c678dd;
-    }
-
+    
+    /* Function/Method names */
     .token.function,
-    .token.class-name {
-        color: #61afef;
+    .token.method,
+    .token.function-name {
+        color: #61AFEF;
     }
-
-    .token.regex,
-    .token.important,
+    
+    /* Class names, built-in objects (document, window, etc) */
+    .token.class-name,
+    .token.builtin,
+    .token.console {
+        color: #E5C07B;
+    }
+    
+    /* Variables and properties - generic rules */
     .token.variable {
-        color: #c678dd;
+        color: #E5C07B;
+    }
+    
+    .token.property {
+        color: #E06C75;
+    }
+    
+    .token.constant,
+    .token.symbol {
+        color: #E06C75;
+    }
+    
+    /* Numbers */
+    .token.number {
+        color: #D19A66;
+    }
+    
+    /* Booleans */
+    .token.boolean {
+        color: #D19A66;
+    }
+    
+    /* Regex */
+    .token.regex {
+        color: #98C379;
+    }
+    
+    /* Important */
+    .token.important {
+        color: #C678DD;
+        font-weight: bold;
+    }
+    
+    /* Special cases for better HTML highlighting */
+    .language-html .token.tag .token.punctuation,
+    .language-xml .token.tag .token.punctuation {
+        color: #ABB2BF;
+    }
+    
+    .language-html .token.tag .token.tag,
+    .language-xml .token.tag .token.tag {
+        color: #E06C75;
+    }
+    
+    /* Special cases for JavaScript highlighting */
+    .language-javascript .token.keyword,
+    .language-js .token.keyword {
+        color: #C678DD;
+    }
+    
+    .language-javascript .token.function,
+    .language-js .token.function {
+        color: #61AFEF;
+    }
+    
+    .language-javascript .token.class-name,
+    .language-js .token.class-name,
+    .language-javascript .token.maybe-class-name,
+    .language-js .token.maybe-class-name {
+        color: #E5C07B;
+    }
+    
+    .language-javascript .token.operator,
+    .language-js .token.operator {
+        color: #56B6C2;
+    }
+    
+    .language-javascript .token.property-access .token.property,
+    .language-js .token.property-access .token.property {
+        color: #E06C75;
+    }
+    
+    /* Additional token types for better coverage */
+    .token.atrule {
+        color: #C678DD;
+    }
+    
+    .token.attr-equals {
+        color: #ABB2BF;
+    }
+    
+    .token.namespace {
+        color: #E06C75;
+    }
+    
+    .token.doctype .token.doctype-tag {
+        color: #ABB2BF;
+    }
+    
+    .token.doctype .token.name {
+        color: #E06C75 !important;
+    }
+    
+    .token.doctype .token.string {
+        color: #98C379;
+    }
+    
+    /* Override Prism's default styles to ensure our colors take precedence */
+    pre[class*="language-"],
+    code[class*="language-"] {
+        color: #ABB2BF;
+        background: #282C34;
+        text-shadow: none;
+    }
+    
+    /* Make sure code blocks have the right background */
+    pre[class*="language-"] {
+        background-color: #282C34;
+    }
+    
+    :not(pre) > code[class*="language-"],
+    pre[class*="language-"] {
+        background: #282C34;
+    }
+    
+    /* Additional specific overrides for better One Dark Pro matching */
+    
+    /* DOCTYPE specific styling */
+    .language-html .token.doctype .token.tag,
+    .language-markup .token.doctype .token.tag {
+        color: #ABB2BF;
+    }
+    
+    .language-html .token.doctype .token.name,
+    .language-markup .token.doctype .token.name {
+        color: #E06C75;
+    }
+    
+    /* JavaScript DOM objects and properties */
+    .language-javascript .token.dom,
+    .language-js .token.dom,
+    .language-javascript .token.constant:not(.token.boolean):not(.token.number),
+    .language-js .token.constant:not(.token.boolean):not(.token.number) {
+        color: #E5C07B;
+    }
+    
+    /* Special handling for common DOM objects */
+    .language-javascript .token.keyword + .token.punctuation + .token.maybe-class-name,
+    .language-js .token.keyword + .token.punctuation + .token.maybe-class-name {
+        color: #E5C07B;
+    }
+    
+    /* Property access in JavaScript */
+    .language-javascript .token.punctuation.dot,
+    .language-js .token.punctuation.dot {
+        color: #ABB2BF;
+    }
+    
+    /* Force specific token combinations */
+    .language-javascript .token.variable:first-child,
+    .language-js .token.variable:first-child {
+        color: #E06C75;
+    }
+    
+    /* Ensure assignment patterns work correctly */
+    .language-javascript .token.keyword + .token.variable,
+    .language-js .token.keyword + .token.variable {
+        color: #E06C75;
+    }
+    
+    /* String template literals */
+    .token.template-string,
+    .token.template-punctuation {
+        color: #98C379;
+    }
+    
+    /* Fix for inline HTML script tags */
+    .language-html .token.script .token.language-javascript,
+    .language-markup .token.script .token.language-javascript {
+        color: #ABB2BF;
+    }
+    
+    /* Ensure proper cascading for nested tokens */
+    .token.tag .token.attr-name {
+        color: #D19A66 !important;
+    }
+    
+    .token.tag .token.attr-value {
+        color: #98C379 !important;
+    }
+    
+    .token.tag .token.punctuation:not(.token.attr-equals) {
+        color: #ABB2BF !important;
+    }
+    
+    /* Fix for equals sign in attributes */
+    .token.attr-equals,
+    .token.tag .token.attr-equals {
+        color: #ABB2BF !important;
+    }
+    
+    /* Ensure DOCTYPE styling takes precedence */
+    .token.doctype {
+        color: #ABB2BF !important;
+    }
+    
+    .token.doctype .token.tag {
+        color: #ABB2BF !important;
+    }
+    
+    .token.doctype .token.name {
+        color: #E06C75 !important;
+    }
+    
+    /* Additional comprehensive token rules for robustness */
+    
+    /* General language constructs */
+    .token.decorator,
+    .token.annotation {
+        color: #E5C07B;
+    }
+    
+    .token.interpolation {
+        color: #E06C75;
+    }
+    
+    .token.parameter {
+        color: #E06C75;
+    }
+    
+    .token.property-access {
+        color: #E06C75;
+    }
+    
+    .token.namespace {
+        color: #E5C07B;
+    }
+    
+    /* CSS specific tokens */
+    .language-css .token.selector,
+    .language-scss .token.selector {
+        color: #E06C75;
+    }
+    
+    .language-css .token.property,
+    .language-scss .token.property {
+        color: #61AFEF;
+    }
+    
+    .language-css .token.function,
+    .language-scss .token.function {
+        color: #61AFEF;
+    }
+    
+    .language-css .token.important,
+    .language-scss .token.important {
+        color: #C678DD;
+    }
+    
+    .language-css .token.unit,
+    .language-scss .token.unit {
+        color: #D19A66;
+    }
+    
+    /* JavaScript/TypeScript specific patterns */
+    .language-javascript .token.spread,
+    .language-js .token.spread,
+    .language-typescript .token.spread,
+    .language-ts .token.spread {
+        color: #56B6C2;
+    }
+    
+    .language-javascript .token.arrow,
+    .language-js .token.arrow,
+    .language-typescript .token.arrow,
+    .language-ts .token.arrow {
+        color: #C678DD;
+    }
+    
+    .language-javascript .token.module,
+    .language-js .token.module,
+    .language-typescript .token.module,
+    .language-ts .token.module {
+        color: #C678DD;
+    }
+    
+    .language-javascript .token.async,
+    .language-js .token.async,
+    .language-typescript .token.async,
+    .language-ts .token.async {
+        color: #C678DD;
+    }
+    
+    /* Python specific */
+    .language-python .token.decorator {
+        color: #E5C07B;
+    }
+    
+    .language-python .token.builtin {
+        color: #E5C07B;
+    }
+    
+    /* JSON specific */
+    .language-json .token.property {
+        color: #E06C75;
+    }
+    
+    /* SQL specific */
+    .language-sql .token.keyword {
+        color: #C678DD;
+    }
+    
+    .language-sql .token.function {
+        color: #61AFEF;
+    }
+    
+    /* Additional pattern matching for complex cases */
+    
+    /* Object property notation */
+    .token.property + .token.punctuation + .token.property {
+        color: #E06C75;
+    }
+    
+    /* Method chaining */
+    .token.punctuation + .token.method {
+        color: #61AFEF;
+    }
+    
+    /* Template literal expressions */
+    .token.template-string .token.interpolation {
+        color: #ABB2BF;
+    }
+    
+    .token.template-string .token.interpolation .token.interpolation-punctuation {
+        color: #C678DD;
+    }
+    
+    /* Import/Export statements */
+    .token.keyword.module {
+        color: #C678DD;
+    }
+    
+    /* Catch common patterns that might be missed */
+    .token.boolean,
+    .token.null,
+    .token.undefined {
+        color: #D19A66;
+    }
+    
+    .token.this,
+    .token.self,
+    .token.super {
+        color: #E06C75;
+    }
+    
+    /* Regular expression components */
+    .token.regex-delimiter,
+    .token.regex-flags {
+        color: #98C379;
+    }
+    
+    .token.regex-source {
+        color: #98C379;
+    }
+    
+    /* Handle special punctuation cases */
+    .token.punctuation.brace-open,
+    .token.punctuation.brace-close {
+        color: #ABB2BF;
+    }
+    
+    .token.punctuation.bracket-open,
+    .token.punctuation.bracket-close {
+        color: #ABB2BF;
+    }
+    
+    /* JSX/TSX specific */
+    .language-jsx .token.tag,
+    .language-tsx .token.tag {
+        color: #E06C75;
+    }
+    
+    .language-jsx .token.attr-name,
+    .language-tsx .token.attr-name {
+        color: #D19A66;
+    }
+    
+    .language-jsx .token.script,
+    .language-tsx .token.script {
+        color: #ABB2BF;
+    }
+    
+    /* Generic fallbacks for unknown tokens */
+    .token.unknown {
+        color: #ABB2BF;
+    }
+    
+    /* Ensure consistency across different Prism.js versions */
+    .token.tag:not(.punctuation):not(.attr-name):not(.attr-value):not(.script) {
+        color: #E06C75;
+    }
+    
+    .token.constant.language {
+        color: #D19A66;
+    }
+    
+    .token.storage.type {
+        color: #C678DD;
+    }
+    
+    .token.storage.modifier {
+        color: #C678DD;
+    }
+    
+    .token.variable.language {
+        color: #E06C75;
+    }
+    
+    /* Override any conflicting Prism.js theme styles */
+    .prism-tomorrow {
+        display: none !important;
+    }
+    
+    /* Ensure our styles cascade properly */
+    .code-block code[class*="language-"] .token {
+        font-family: inherit;
+        font-size: inherit;
+        line-height: inherit;
+    }
+    
+    /* Selection colors */
+    pre[class*="language-"]::-moz-selection,
+    pre[class*="language-"] ::-moz-selection,
+    code[class*="language-"]::-moz-selection,
+    code[class*="language-"] ::-moz-selection {
+        background: rgba(67, 84, 103, 0.7);
+        color: inherit;
+    }
+    
+    pre[class*="language-"]::selection,
+    pre[class*="language-"] ::selection,
+    code[class*="language-"]::selection,
+    code[class*="language-"] ::selection {
+        background: rgba(67, 84, 103, 0.7);
+        color: inherit;
     }
 
     /* Option selection styling */

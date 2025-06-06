@@ -339,97 +339,96 @@ def format_code_block(code, language=None):
     def encode_with_html_entities(text):
         """Encode text with HTML entities for critical characters"""
         return (text.replace('&', '&amp;')
-                    .replace('/', '&#47;')
-                    .replace('*', '&#42;')
                     .replace('<', '&lt;')
-                    .replace('>', '&gt;')
-                    .replace('`', '&#96;'))
+                    .replace('>', '&gt;'))
     
     # Clean up the code
     code = code.strip()
     
-    # Pre-process the entire code block for multi-line CSS comments
-    if language and language.lower() in ['css', 'html', 'javascript', 'js']:
-        # Process CSS comments with robust encoding
-        processed_code = ""
-        pos = 0
-        
-        # Use a regex that identifies CSS comments precisely
-        for match in re.finditer(r'/\*.*?\*/', code, flags=re.DOTALL):
-            start, end = match.span()
-            full_comment = match.group(0)  # Get the entire comment with /* */
-            
-            # Add the code before the comment
-            processed_code += code[pos:start]
-            
-            # Encode comment with HTML entities
-            encoded_comment = encode_with_html_entities(full_comment)
-            
-            # Add the styled comment with robust encoding
-            processed_code += f'<span class="token comment">{encoded_comment}</span>'
-            
-            # Update the position
-            pos = end
-        
-        # Add any remaining code after the last comment
-        processed_code += code[pos:]
-        code = processed_code
+    # Apply HTML escaping to the entire code block for safety
+    escaped_code = encode_with_html_entities(code)
     
-    # Process the code block line by line for remaining processing
-    lines = []
-    for line in code.split('\n'):
-        # Escape HTML special characters (except for already processed comments)
-        if '<span class="token comment">' not in line:
-            line = encode_with_html_entities(line)
-        
-        # Special handling for JS single-line comments
-        if language and language.lower() in ['javascript', 'js']:
-            # Pattern for single-line comments that avoids already processed spans
-            js_comment_matches = re.finditer(r'(?<!<span class="token comment">)(//.*?)$', line)
-            
-            for match in js_comment_matches:
-                full_comment = match.group(1)
-                start, end = match.span(1)
-                
-                # Use the same robust encoding for JS comments
-                encoded_comment = encode_with_html_entities(full_comment)
-                
-                # Replace the comment with robustly encoded version
-                line = line[:start] + f'<span class="token comment">{encoded_comment}</span>' + line[end:]
-        
-        # Add proper indentation (preserving spans)
-        parts = []
-        in_span = False
-        for part in re.split(r'(<span.*?>|</span>)', line):
-            if part.startswith('<span') or part == '</span>':
-                parts.append(part)
-                in_span = part.startswith('<span')
-            else:
-                parts.append(part.replace(' ', '&nbsp;') if not in_span else part)
-        
-        lines.append(''.join(parts))
-    
-    code = '<br>'.join(lines)
-    
-    # Add CSS to ensure comments are properly styled and code wraps properly on mobile
-    css_for_comments = """
-    <style>
-    .token.comment {
-        color: #5c6370 !important;
-        font-style: normal !important;
+    # Determine the language class for Prism.js
+    # Map common language aliases to Prism.js language classes
+    language_map = {
+        'js': 'javascript',
+        'ts': 'typescript',
+        'py': 'python',
+        'rb': 'ruby',
+        'cs': 'csharp',
+        'cpp': 'cpp',
+        'c++': 'cpp',
+        'html': 'html',
+        'css': 'css',
+        'sql': 'sql',
+        'json': 'json',
+        'xml': 'xml',
+        'bash': 'bash',
+        'shell': 'bash',
+        'sh': 'bash',
+        'yaml': 'yaml',
+        'yml': 'yaml'
     }
+    
+    # Normalize language name
+    if language:
+        language_lower = language.lower()
+        prism_language = language_map.get(language_lower, language_lower)
+    else:
+        prism_language = 'plaintext'
+    
+    # Add CSS to ensure proper styling and fallback behavior
+    css_for_code_block = """
+    <style>
+    /* Import JetBrains Mono font */
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+    
+    /* Fallback styling when Prism.js is not active */
+    .code-block {
+        background-color: #21252b; /* Darker outer background */
+        padding: 1px;
+        border-radius: 8px;
+        margin: 15px 0;
+        overflow-x: auto;
+    }
+    
     .code-block pre {
-        white-space: pre-wrap !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-        overflow-x: visible !important;
+        background-color: #282C34; /* Main code background */
+        padding: 15px;
+        border-radius: 7px;
+        margin: 0;
+        border: none;
+        box-shadow: none;
+        white-space: pre;
+        word-wrap: normal;
+        overflow-wrap: normal;
+    }
+    
+    .code-block pre code {
+        font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+        font-size: 14px;
+        color: #ABB2BF;
+        background: none;
+        padding: 0;
+        border: none;
+        display: block;
+        white-space: pre;
+        overflow-x: auto;
+    }
+    
+    /* Ensure Prism.js styles take precedence when loaded */
+    .code-block pre[class*="language-"] {
+        background-color: #282C34 !important;
     }
     </style>
     """
     
+    # Return the code block formatted for Prism.js
+    # The structure is: <pre><code class="language-{lang}">{escaped_code}</code></pre>
+    # This allows Prism.js to apply syntax highlighting while maintaining safety
     return f'''
-    {css_for_comments}
+    {css_for_code_block}
     <div class="code-block">
-        <pre>{code}</pre>
+        <pre><code class="language-{prism_language}">{escaped_code}</code></pre>
     </div>
     ''' 
